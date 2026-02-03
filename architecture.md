@@ -54,81 +54,82 @@ Given weekly **Circana** CSV exports for one or more retailers (e.g., BJ’s, Sa
 ```mermaid
 flowchart LR
   subgraph Inputs
-    A[BJs Circana CSV]
-    B[Sams Circana CSV]
-    C[Costco Circana CSV (optional)]
-    Y[config YAML (optional)]
+    A["BJs Circana CSV"];
+    B["Sams Circana CSV"];
+    C["Costco Circana CSV (optional)"];
+    Y["Config YAML (optional)"];
   end
 
   subgraph DataPrep["data_prep.py"]
-    DP[ElasticityDataPrep]
-    PC[PrepConfig]
+    DP["ElasticityDataPrep"];
+    PC["PrepConfig"];
   end
 
   subgraph Models["bayesian_models.py"]
-    PL[PriorLibrary]
-    SM[SimpleBayesianModel]
-    HM[HierarchicalBayesianModel]
-    BR[BayesianResults]
-    HR[HierarchicalResults]
+    PL["PriorLibrary"];
+    SM["SimpleBayesianModel"];
+    HM["HierarchicalBayesianModel"];
+    BR["BayesianResults"];
+    HR["HierarchicalResults"];
   end
 
   subgraph Viz["visualizations.py"]
-    P1[plot_trace]
-    P2[plot_posteriors]
-    P3[plot_seasonal_patterns]
-    P4[plot_revenue_scenarios]
-    P5[plot_group_comparison]
-    HTML[generate_html_report]
+    P1["plot_trace"];
+    P2["plot_posteriors"];
+    P3["plot_seasonal_patterns"];
+    P4["plot_revenue_scenarios"];
+    P5["plot_group_comparison"];
+    HTML["generate_html_report"];
   end
 
   subgraph CLI["run_analysis.py"]
-    CLI1[parse_arguments / load_config]
-    CLI2[run_pipeline]
+    CLI1["parse_arguments + load_config"];
+    CLI2["run_pipeline"];
   end
 
   subgraph Outputs
-    O1[prepared_data.csv]
-    O2[trace.nc]
-    O3[model_summary.txt]
-    O4[results_summary.csv]
-    O5[plots/*.png]
-    O6[elasticity_report.html]
-    O7[analysis.log]
+    O1["prepared_data.csv"];
+    O2["trace.nc"];
+    O3["model_summary.txt"];
+    O4["results_summary.csv"];
+    O5["plots (png files)"];
+    O6["elasticity_report.html"];
+    O7["analysis.log"];
   end
 
-  A --> DP
-  B --> DP
-  C --> DP
-  Y --> CLI1 --> CLI2
+  A --> DP;
+  B --> DP;
+  C --> DP;
+  Y --> CLI1;
+  CLI1 --> CLI2;
 
-  DP --> SM
-  DP --> HM
+  CLI2 --> DP;
+  DP --> SM;
+  DP --> HM;
 
-  PL --> SM
-  PL --> HM
+  PL --> SM;
+  PL --> HM;
 
-  SM --> BR
-  HM --> HR
+  SM --> BR;
+  HM --> HR;
 
-  BR --> Viz
-  HR --> Viz
+  BR --> Viz;
+  HR --> Viz;
 
-  CLI2 --> DP
-  CLI2 --> SM
-  CLI2 --> HM
-  CLI2 --> HTML
+  CLI2 --> SM;
+  CLI2 --> HM;
+  CLI2 --> HTML;
 
-  DP --> O1
-  BR --> O2
-  HR --> O2
-  BR --> O3
-  HR --> O3
-  BR --> O4
-  HR --> O4
-  Viz --> O5
-  HTML --> O6
-  CLI2 --> O7
+  DP --> O1;
+  BR --> O2;
+  HR --> O2;
+  BR --> O3;
+  HR --> O3;
+  BR --> O4;
+  HR --> O4;
+  Viz --> O5;
+  HTML --> O6;
+  CLI2 --> O7;
 ```
 
 **Key idea:** `run_analysis.py` is the “conductor”. It doesn’t implement business logic; it composes the other modules.
