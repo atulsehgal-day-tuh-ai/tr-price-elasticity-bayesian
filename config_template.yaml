@@ -1,0 +1,100 @@
+# Configuration Template for Price Elasticity Analysis
+# Copy this file and customize for your analysis
+
+# Data Configuration
+data:
+  # File paths
+  bjs_path: "data/bjs.csv"
+  sams_path: "data/sams.csv"
+  costco_path: null  # Optional: add path if you have Costco data
+  
+  # Retailer filter
+  # Options: 'All' (keep separate), 'Overall' (combine), 'BJs', 'Sams'
+  retailer_filter: "All"
+  
+  # Features to include
+  include_seasonality: true
+  include_promotions: true
+  include_time_trend: true
+  
+  # Transformations
+  log_transform_sales: true
+  log_transform_prices: true
+  
+  # Retailer-specific configurations (for missing data handling)
+  retailers:
+    BJs:
+      has_promo: true
+      has_competitor: true
+    Sams:
+      has_promo: true
+      has_competitor: true
+    # Uncomment when adding Costco
+    # Costco:
+    #   has_promo: false      # If Costco doesn't have promo data
+    #   has_competitor: true
+
+# Model Configuration
+model:
+  # Model type: 'simple' or 'hierarchical'
+  type: "hierarchical"
+  
+  # Prior specification
+  # Options: 'default' (recommended), 'informative', 'vague', or custom dict
+  priors: "default"
+  
+  # MCMC Sampling Settings
+  n_samples: 2000       # Number of posterior samples per chain
+  n_tune: 1000          # Number of tuning/burn-in steps
+  n_chains: 4           # Number of parallel chains
+  target_accept: 0.95   # Target acceptance rate (higher = more accurate, slower)
+  
+  # Convergence criteria
+  max_rhat: 1.01        # Maximum R-hat for convergence
+  min_ess: 400          # Minimum effective sample size
+  
+  # Features to include in model
+  include_cross_price: true
+  include_seasonality: true
+  include_time_trend: true
+  
+  # Random seed for reproducibility
+  random_seed: 42
+
+# Output Configuration
+output:
+  # Output directory
+  # NOTE: `run_analysis.py` expects `output_dir` (kept compatible with older `directory` key too)
+  output_dir: "./results"
+  
+  # What to generate
+  generate_html: true
+  generate_plots: true
+  save_trace: true
+  save_summary: true
+  
+  # Plot settings
+  credible_interval: 0.95  # Width of credible intervals (95%)
+  
+  # Revenue scenarios to test (price changes in %)
+  price_scenarios: [-5, -3, -1, 1, 3, 5]
+
+# Logging (used by run_analysis.py)
+logging:
+  verbose: true
+  log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+
+# Advanced Settings
+advanced:
+  # Validation
+  validate_data: true
+  drop_missing: true
+  
+  # Logging
+  # (Deprecated) kept for backward compatibility; prefer `logging:` above
+  verbose: true
+  log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  
+  # Performance
+  parallel: true
+  n_jobs: -1  # -1 uses all available cores
