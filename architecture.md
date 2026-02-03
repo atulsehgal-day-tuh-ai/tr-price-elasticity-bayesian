@@ -54,8 +54,8 @@ Given weekly **Circana** CSV exports for one or more retailers (e.g., BJ’s, Sa
 ```mermaid
 flowchart LR
   subgraph Inputs
-    A[BJ's Circana CSV]
-    B[Sam's Circana CSV]
+    A[BJs Circana CSV]
+    B[Sams Circana CSV]
     C[Costco Circana CSV (optional)]
     Y[config YAML (optional)]
   end
