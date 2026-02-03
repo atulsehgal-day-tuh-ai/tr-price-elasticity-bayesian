@@ -60,16 +60,22 @@ python run_analysis.py --config my_config.yaml
 
 ## 📖 Documentation
 
+### Architecture (how it all connects)
+
+See **`architecture.md`** for a detailed architecture diagram, module responsibilities, call graphs, and the end-to-end data/model/report flow.
+
 ### Data Preparation
 
 ```python
-from data_prep import ElasticityDataPrep
+from data_prep import ElasticityDataPrep, PrepConfig
 
 # Basic usage
 prep = ElasticityDataPrep(
-    retailer_filter='All',  # 'All', 'Overall', 'BJs', 'Sams'
-    include_seasonality=True,
-    include_promotions=True
+    PrepConfig(
+        retailer_filter='All',  # 'All', 'Overall', 'BJs', 'Sams', 'Costco'
+        include_seasonality=True,
+        include_promotions=True
+    )
 )
 
 df = prep.transform(
@@ -115,20 +121,20 @@ df = prep.transform('bjs.csv', 'sams.csv', 'costco.csv')
 ### Bayesian Modeling
 
 ```python
-from bayesian_models import HierarchicalBayesianModel, ModelConfig
+from bayesian_models import HierarchicalBayesianModel
 
-config = ModelConfig(
+model = HierarchicalBayesianModel(
     priors='default',    # 'default', 'informative', 'vague'
     n_samples=2000,
-    n_chains=4
+    n_chains=4,
+    n_tune=1000,
+    target_accept=0.95
 )
-
-model = HierarchicalBayesianModel(config)
 results = model.fit(df)
 
 # Access results
-print(f"Global elasticity: {results.global_elasticity:.3f}")
-print(f"BJ's elasticity: {results.group_elasticities['BJs']:.3f}")
+print(f"Global elasticity: {results.global_elasticity.mean:.3f}")
+print(f"BJ's elasticity: {results.group_elasticities[\"BJ's\"].mean:.3f}")
 ```
 
 ### Probability Statements
@@ -139,8 +145,8 @@ prob = results.probability('elasticity_own < -2.0')
 print(f"P(elasticity < -2.0) = {prob:.1%}")
 
 # Revenue impact
-impact = results.revenue_impact(price_change=-3)
-print(f"3% price cut: {impact['revenue_mean']:+.1f}% revenue impact")
+impact = results.revenue_impact(price_change_pct=-3)
+print(f"3% price cut: {impact['revenue_impact_mean']:+.1f}% revenue impact")
 ```
 
 ## 📂 Project Structure
