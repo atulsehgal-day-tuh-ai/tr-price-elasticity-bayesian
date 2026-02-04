@@ -20,6 +20,16 @@ data:
   # Transformations
   log_transform_sales: true
   log_transform_prices: true
+
+  # V2: Dual elasticity (base vs promo)
+  # When true, data prep will create:
+  # - Base_Price_SI, Log_Base_Price_SI
+  # - Promo_Depth_SI (negative when discounted; used with negative promo elasticity)
+  separate_base_promo: true
+
+  # Base price estimation guardrails (used if base sales columns are missing/undefined)
+  base_price_proxy_window: 8              # rolling weeks for proxy base price (if needed)
+  base_price_imputed_warn_threshold: 0.30 # warn if >30% weeks required imputation
   
   # Retailer-specific configurations (for missing data handling)
   retailers:

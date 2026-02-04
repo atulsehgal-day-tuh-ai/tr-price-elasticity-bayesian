@@ -38,8 +38,13 @@ class PrepConfig:
     include_seasonality: bool = True
     include_promotions: bool = True
     include_time_trend: bool = True
+    # V2: Separate base (strategic) vs promotional (tactical) price effects
+    separate_base_promo: bool = True
     log_transform_sales: bool = True
     log_transform_prices: bool = True
+    # Base price imputation guardrails (used when base sales columns are missing/undefined)
+    base_price_proxy_window: int = 8  # rolling window (weeks) for proxy base-price estimation
+    base_price_imputed_warn_threshold: float = 0.30  # warn if >30% of weeks are imputed
     brand_filters: List[str] = field(default_factory=lambda: [
         'Total Sparkling Ice Core Brand',
         'PRIVATE LABEL-BOTTLED WATER-SELTZER/SPARKLING/MINERAL WATER'
@@ -175,6 +180,15 @@ class ElasticityDataPrep:
         
         # Prices
         df['Avg_Price'] = df['Dollar Sales'] / df['Unit Sales']
+
+        # V2: Base price columns (if available)
+        # Circana often provides Base Dollar Sales / Base Unit Sales (everyday/base sales).
+        base_dollars_col = 'Base Dollar Sales'
+        base_units_col = 'Base Unit Sales'
+        if base_dollars_col in df.columns and base_units_col in df.columns:
+            # Avoid divide-by-zero; undefined base price becomes NaN and is handled downstream.
+            denom = df[base_units_col].replace(0, np.nan)
+            df['Base_Avg_Price'] = df[base_dollars_col] / denom
         
         # Promotions
         if self.config.include_promotions:
@@ -208,6 +222,10 @@ class ElasticityDataPrep:
         # Seasonality
         if self.config.include_seasonality:
             df_wide = self._add_seasonal_features(df_wide)
+
+        # V2: base vs promo separation (create before logs so we can log-transform base price)
+        if self.config.separate_base_promo:
+            df_wide = self._add_base_and_promo_depth(df_wide)
         
         # Logs
         if self.config.log_transform_sales:
@@ -217,12 +235,17 @@ class ElasticityDataPrep:
             df_wide['Log_Price_SI'] = np.log(df_wide['Price_SI'])
             # Competitor price may be missing for some retailers (handled downstream)
             df_wide['Log_Price_PL'] = np.log(df_wide['Price_PL'])
+            if self.config.separate_base_promo and 'Base_Price_SI' in df_wide.columns:
+                df_wide['Log_Base_Price_SI'] = np.log(df_wide['Base_Price_SI'])
         
         # Clean
         df_wide = df_wide.replace([np.inf, -np.inf], np.nan)
-        # Only require outcome and own price. Cross-price and promo may be missing for some retailers
+        # Only require outcome and base/own price. Cross-price and promo may be missing for some retailers
         # and should be handled by model masking (via has_competitor/has_promo indicators).
-        df_wide = df_wide.dropna(subset=['Log_Unit_Sales_SI', 'Log_Price_SI'])
+        if self.config.separate_base_promo:
+            df_wide = df_wide.dropna(subset=['Log_Unit_Sales_SI', 'Log_Base_Price_SI'])
+        else:
+            df_wide = df_wide.dropna(subset=['Log_Unit_Sales_SI', 'Log_Price_SI'])
         
         # Missing features
         if self.config.retailers:
@@ -250,9 +273,21 @@ class ElasticityDataPrep:
             values='Avg_Price',
             aggfunc='mean'
         ).reset_index()
+
+        # V2: Base prices (if present)
+        base_prices = None
+        if self.config.separate_base_promo and 'Base_Avg_Price' in df.columns:
+            base_prices = df.pivot_table(
+                index=index_cols,
+                columns='Product_Short',
+                values='Base_Avg_Price',
+                aggfunc='mean'
+            ).reset_index()
         
         # Merge
         wide = sales.merge(prices, on=index_cols, suffixes=('_sales', '_price'))
+        if base_prices is not None:
+            wide = wide.merge(base_prices, on=index_cols, suffixes=('', '_base_price'))
         
         # Rename
         wide = wide.rename(columns={
@@ -261,6 +296,13 @@ class ElasticityDataPrep:
             'Sparkling Ice_price': 'Price_SI',
             'Private Label_price': 'Price_PL'
         })
+
+        # V2 base-price column (Sparkling Ice only)
+        # After the base_prices merge, Sparkling Ice base price will appear as 'Sparkling Ice'
+        # (since the value column is Base_Avg_Price with columns=Product_Short).
+        if base_prices is not None:
+            if 'Sparkling Ice' in wide.columns:
+                wide = wide.rename(columns={'Sparkling Ice': 'Base_Price_SI'})
         
         # Promo
         if self.config.include_promotions:
@@ -274,6 +316,74 @@ class ElasticityDataPrep:
             wide['Promo_Intensity_SI'] = wide['Promo_Intensity_SI'].fillna(0)
         
         return wide
+
+    # ========================================================================
+    # V2: BASE PRICE + PROMO DEPTH FEATURES
+    # ========================================================================
+
+    def _add_base_and_promo_depth(self, df_wide: pd.DataFrame) -> pd.DataFrame:
+        """
+        Add V2 features:
+        - Base_Price_SI (and Log_Base_Price_SI later)
+        - Promo_Depth_SI: relative price change vs base price (negative when discounted)
+
+        Notes:
+        - If Circana base columns are missing, we estimate a proxy base price from Avg_Price.
+        - If Base_Price_SI is undefined for some weeks (e.g., Base Unit Sales = 0), we impute it.
+        """
+        df = df_wide.copy()
+
+        # Ensure we have some base price signal
+        if 'Base_Price_SI' not in df.columns or df['Base_Price_SI'].isna().all():
+            # Proxy: rolling max of observed average price (common approximation for regular/base price)
+            # (computed per retailer if present; otherwise overall)
+            self.logger.warning("  ⚠️ Base sales columns not available (or Base_Price_SI missing). Using proxy base price from Avg_Price.")
+            df['Base_Price_SI'] = np.nan
+
+            if 'Retailer' in df.columns:
+                df = df.sort_values(['Retailer', 'Date'])
+                df['Base_Price_SI'] = (
+                    df.groupby('Retailer')['Price_SI']
+                    .transform(lambda s: s.rolling(self.config.base_price_proxy_window, min_periods=1).max())
+                )
+            else:
+                df = df.sort_values('Date')
+                df['Base_Price_SI'] = df['Price_SI'].rolling(self.config.base_price_proxy_window, min_periods=1).max()
+
+        # Impute missing/invalid base price values (forward-fill then back-fill)
+        df['Base_Price_SI'] = df['Base_Price_SI'].where(df['Base_Price_SI'] > 0)
+        base_missing_before = float(df['Base_Price_SI'].isna().mean())
+
+        if 'Retailer' in df.columns:
+            df = df.sort_values(['Retailer', 'Date'])
+            df['Base_Price_SI'] = df.groupby('Retailer')['Base_Price_SI'].ffill().bfill()
+        else:
+            df = df.sort_values('Date')
+            df['Base_Price_SI'] = df['Base_Price_SI'].ffill().bfill()
+
+        base_missing_after = float(df['Base_Price_SI'].isna().mean())
+
+        # Guardrail warnings
+        imputed_rate = base_missing_before  # approximate: fraction that needed fill (missing before fill)
+        if imputed_rate > self.config.base_price_imputed_warn_threshold:
+            self.logger.warning(
+                f"  ⚠️ High base-price imputation rate: {imputed_rate:.1%} of weeks lacked base price before imputation."
+            )
+        if base_missing_after > 0:
+            raise ValueError(
+                f"Base_Price_SI could not be imputed for {base_missing_after:.1%} of rows. "
+                "Check Date coverage and price columns."
+            )
+
+        # Promotional depth as relative price change vs base (negative when discounted)
+        # promo_depth = (AvgPrice - BasePrice) / BasePrice = (Avg/Base) - 1
+        df['Promo_Depth_SI'] = (df['Price_SI'] / df['Base_Price_SI']) - 1.0
+        df['Promo_Depth_SI'] = df['Promo_Depth_SI'].replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
+        # Clip to reasonable range: discounts down to -80%, premiums up to +50% (rare)
+        df['Promo_Depth_SI'] = df['Promo_Depth_SI'].clip(-0.80, 0.50)
+
+        return df
     
     def _add_time_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add time features"""
@@ -359,6 +469,8 @@ class ElasticityDataPrep:
                 # The model masks promo effect via `has_promo`.
                 if 'Promo_Intensity_SI' in df.columns:
                     df.loc[mask, 'Promo_Intensity_SI'] = 0.0
+                if 'Promo_Depth_SI' in df.columns:
+                    df.loc[mask, 'Promo_Depth_SI'] = 0.0
                 df.loc[mask, 'has_promo'] = 0
             else:
                 df.loc[mask, 'has_promo'] = 1
@@ -379,7 +491,13 @@ class ElasticityDataPrep:
     def _validate_output(self, df: pd.DataFrame):
         """Validate output"""
         
-        required = ['Date', 'Log_Unit_Sales_SI', 'Log_Price_SI']
+        required = ['Date', 'Log_Unit_Sales_SI']
+
+        # V2 vs V1 price features
+        if self.config.separate_base_promo:
+            required.extend(['Log_Base_Price_SI', 'Promo_Depth_SI'])
+        else:
+            required.append('Log_Price_SI')
         
         if self.config.include_promotions:
             required.append('Promo_Intensity_SI')

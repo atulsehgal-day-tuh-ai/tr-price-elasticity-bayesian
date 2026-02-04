@@ -57,9 +57,13 @@ def plot_trace(results, output_path: Optional[str] = None, figsize=(14, 10)):
     """
     
     # Select key parameters to plot
-    var_names = ['elasticity_own', 'elasticity_cross']
+    if 'base_elasticity' in results.trace.posterior:
+        var_names = ['base_elasticity', 'promo_elasticity', 'elasticity_cross']
+    else:
+        var_names = ['elasticity_own', 'elasticity_cross']
     
-    if 'beta_promo' in results.trace.posterior:
+    # Legacy promo effect (V1)
+    if 'beta_promo' in results.trace.posterior and 'promo_elasticity' not in results.trace.posterior:
         var_names.append('beta_promo')
     
     if 'beta_spring' in results.trace.posterior:
@@ -113,7 +117,15 @@ def plot_posteriors(results, output_path: Optional[str] = None, figsize=(14, 10)
     params = []
     titles = []
     
-    if results.elasticity_own:
+    # V2: base vs promo elasticities (preferred)
+    if hasattr(results, 'base_elasticity') and results.base_elasticity is not None:
+        params.append(('base_elasticity', results.base_elasticity))
+        titles.append('Base Price Elasticity')
+
+        if getattr(results, 'promo_elasticity', None) is not None:
+            params.append(('promo_elasticity', results.promo_elasticity))
+            titles.append('Promotional Elasticity')
+    elif results.elasticity_own:
         params.append(('elasticity_own', results.elasticity_own))
         titles.append('Own-Price Elasticity')
     
@@ -121,7 +133,8 @@ def plot_posteriors(results, output_path: Optional[str] = None, figsize=(14, 10)
         params.append(('elasticity_cross', results.elasticity_cross))
         titles.append('Cross-Price Elasticity')
     
-    if results.beta_promo:
+    # Legacy promo effect (V1) only if promo elasticity is not present
+    if results.beta_promo and getattr(results, 'promo_elasticity', None) is None:
         params.append(('beta_promo', results.beta_promo))
         titles.append('Promotional Effect')
     
@@ -258,6 +271,152 @@ def plot_seasonal_patterns(results, data, output_path: Optional[str] = None, fig
 # REVENUE SCENARIOS
 # ============================================================================
 
+def plot_base_vs_promo_comparison(results, output_path: Optional[str] = None, figsize=(10, 5)):
+    """
+    Plot base price elasticity vs promotional elasticity side-by-side (V2).
+
+    Output: base_vs_promo_comparison.png
+    """
+    if getattr(results, 'promo_elasticity', None) is None:
+        print("Promotional elasticity not available - skipping base vs promo comparison")
+        return None
+
+    base = results.base_elasticity
+    promo = results.promo_elasticity
+
+    labels = ["Base", "Promo"]
+    means = [base.mean, promo.mean]
+    ci_lower = [base.ci_lower, promo.ci_lower]
+    ci_upper = [base.ci_upper, promo.ci_upper]
+
+    yerr = [
+        np.array(means) - np.array(ci_lower),
+        np.array(ci_upper) - np.array(means),
+    ]
+
+    fig, ax = plt.subplots(1, 1, figsize=figsize)
+    ax.bar(labels, means, color=["steelblue", "coral"], alpha=0.8, edgecolor="black")
+    ax.errorbar(labels, means, yerr=yerr, fmt="none", color="black", capsize=6)
+    ax.axhline(0, color="black", linestyle="--", linewidth=1, alpha=0.6)
+
+    ax.set_title("Base vs Promotional Elasticity", fontweight="bold")
+    ax.set_ylabel("Elasticity (log sales response)")
+    ax.grid(alpha=0.25, axis="y")
+
+    # Annotate magnitude ratio
+    try:
+        ratio = abs(promo.mean) / max(abs(base.mean), 1e-9)
+        ax.text(0.5, 0.95, f"|Promo| / |Base| ≈ {ratio:.1f}x", transform=ax.transAxes,
+                ha="center", va="top")
+    except Exception:
+        pass
+
+    plt.tight_layout()
+
+    if output_path:
+        plt.savefig(output_path, dpi=300, bbox_inches="tight")
+        print(f"Base vs promo comparison saved to {output_path}")
+
+    return fig
+
+
+def plot_revenue_scenarios_base(results, scenarios=None, output_path: Optional[str] = None, figsize=(12, 8)):
+    """
+    Plot revenue impact scenarios for base price changes (V2).
+
+    Output: revenue_scenarios_base.png
+    """
+    if scenarios is None:
+        scenarios = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5]
+
+    impacts = [results.base_price_impact(s) for s in scenarios]
+
+    means = [i['revenue_impact_mean'] for i in impacts]
+    ci_lower = [i['revenue_impact_ci'][0] for i in impacts]
+    ci_upper = [i['revenue_impact_ci'][1] for i in impacts]
+    probs = [i['probability_positive'] for i in impacts]
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=figsize)
+
+    ax1.plot(scenarios, means, 'o-', color='steelblue', linewidth=2, markersize=8, label='Expected Impact')
+    ax1.fill_between(scenarios, ci_lower, ci_upper, alpha=0.3, color='steelblue', label='95% Credible Interval')
+    ax1.axhline(0, color='red', linestyle='--', linewidth=1, alpha=0.5)
+    ax1.axvline(0, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+
+    ax1.set_xlabel('Base Price Change (%)', fontsize=12)
+    ax1.set_ylabel('Revenue Impact (%)', fontsize=12)
+    ax1.set_title('Revenue Impact of Base Price Changes', fontweight='bold', fontsize=14)
+    ax1.legend()
+    ax1.grid(alpha=0.3)
+
+    colors = ['green' if p >= 0.5 else 'red' for p in probs]
+    ax2.bar(scenarios, [p * 100 for p in probs], color=colors, alpha=0.7, edgecolor='black')
+    ax2.axhline(50, color='black', linestyle='--', linewidth=1, alpha=0.5)
+
+    ax2.set_xlabel('Base Price Change (%)', fontsize=12)
+    ax2.set_ylabel('Probability of Positive Revenue Impact (%)', fontsize=12)
+    ax2.set_title('Probability of Revenue Increase (Base Price)', fontweight='bold', fontsize=14)
+    ax2.grid(alpha=0.3, axis='y')
+
+    plt.tight_layout()
+
+    if output_path:
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        print(f"Base price scenarios plot saved to {output_path}")
+
+    return fig
+
+
+def plot_revenue_scenarios_promo(results, discounts=None, output_path: Optional[str] = None, figsize=(12, 8)):
+    """
+    Plot revenue impact scenarios for promotional discounts (V2).
+
+    Output: revenue_scenarios_promo.png
+    """
+    if getattr(results, 'promo_elasticity', None) is None:
+        print("Promotional elasticity not available - skipping promo scenarios")
+        return None
+
+    if discounts is None:
+        discounts = [5, 10, 15, 20]
+
+    impacts = [results.promo_impact(d) for d in discounts]
+
+    means = [i['revenue_impact_mean'] for i in impacts]
+    ci_lower = [i['revenue_impact_ci'][0] for i in impacts]
+    ci_upper = [i['revenue_impact_ci'][1] for i in impacts]
+    probs = [i['probability_positive'] for i in impacts]
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=figsize)
+
+    ax1.plot(discounts, means, 'o-', color='coral', linewidth=2, markersize=8, label='Expected Impact')
+    ax1.fill_between(discounts, ci_lower, ci_upper, alpha=0.3, color='coral', label='95% Credible Interval')
+    ax1.axhline(0, color='red', linestyle='--', linewidth=1, alpha=0.5)
+
+    ax1.set_xlabel('Discount Depth (%)', fontsize=12)
+    ax1.set_ylabel('Revenue Impact (%)', fontsize=12)
+    ax1.set_title('Revenue Impact of Promotional Discounts', fontweight='bold', fontsize=14)
+    ax1.legend()
+    ax1.grid(alpha=0.3)
+
+    colors = ['green' if p >= 0.5 else 'red' for p in probs]
+    ax2.bar(discounts, [p * 100 for p in probs], color=colors, alpha=0.7, edgecolor='black')
+    ax2.axhline(50, color='black', linestyle='--', linewidth=1, alpha=0.5)
+
+    ax2.set_xlabel('Discount Depth (%)', fontsize=12)
+    ax2.set_ylabel('Probability of Positive Revenue Impact (%)', fontsize=12)
+    ax2.set_title('Probability of Revenue Increase (Promotions)', fontweight='bold', fontsize=14)
+    ax2.grid(alpha=0.3, axis='y')
+
+    plt.tight_layout()
+
+    if output_path:
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        print(f"Promo scenarios plot saved to {output_path}")
+
+    return fig
+
+
 def plot_revenue_scenarios(results, scenarios=None, output_path: Optional[str] = None, figsize=(12, 8)):
     """
     Plot revenue impact scenarios
@@ -286,7 +445,7 @@ def plot_revenue_scenarios(results, scenarios=None, output_path: Optional[str] =
     if scenarios is None:
         scenarios = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5]
     
-    # Calculate impacts
+    # Calculate impacts (backwards-compatible: uses base price impact)
     impacts = [results.revenue_impact(s) for s in scenarios]
     
     means = [i['revenue_impact_mean'] for i in impacts]
@@ -476,10 +635,25 @@ def generate_html_report(
     plot_seasonal_patterns(results, data, output_path=str(seasonal_path))
     plt.close()
     
-    print("  Creating revenue scenarios plot...")
-    revenue_path = output_dir / 'revenue_scenarios.png'
-    plot_revenue_scenarios(results, output_path=str(revenue_path))
+    # V2: base vs promo comparison + separate scenario plots
+    base_vs_promo_path = None
+    if getattr(results, 'promo_elasticity', None) is not None:
+        print("  Creating base vs promo comparison plot...")
+        base_vs_promo_path = output_dir / 'base_vs_promo_comparison.png'
+        plot_base_vs_promo_comparison(results, output_path=str(base_vs_promo_path))
+        plt.close()
+
+    print("  Creating base price revenue scenarios plot...")
+    revenue_base_path = output_dir / 'revenue_scenarios_base.png'
+    plot_revenue_scenarios_base(results, output_path=str(revenue_base_path))
     plt.close()
+
+    revenue_promo_path = None
+    if getattr(results, 'promo_elasticity', None) is not None:
+        print("  Creating promotional revenue scenarios plot...")
+        revenue_promo_path = output_dir / 'revenue_scenarios_promo.png'
+        plot_revenue_scenarios_promo(results, output_path=str(revenue_promo_path))
+        plt.close()
     
     # Group comparison (if hierarchical)
     group_path = None
@@ -491,7 +665,15 @@ def generate_html_report(
     
     # Generate HTML
     print("  Generating HTML...")
-    html_content = _create_html_content(results, data, output_dir, group_path)
+    html_content = _create_html_content(
+        results=results,
+        data=data,
+        output_dir=output_dir,
+        group_path=group_path,
+        base_vs_promo_path=base_vs_promo_path,
+        revenue_base_path=revenue_base_path,
+        revenue_promo_path=revenue_promo_path,
+    )
     
     # Write HTML file
     report_path = output_dir / report_name
@@ -504,7 +686,7 @@ def generate_html_report(
     return str(report_path)
 
 
-def _create_html_content(results, data, output_dir, group_path):
+def _create_html_content(results, data, output_dir, group_path, base_vs_promo_path, revenue_base_path, revenue_promo_path):
     """Create HTML content"""
     
     # Determine model type
@@ -636,11 +818,13 @@ def _create_html_content(results, data, output_dir, group_path):
         <h2>📊 Key Results</h2>
         
         <div class="stat-card">
-            <h3>Own-Price Elasticity</h3>
-            <div class="value">{results.elasticity_own.mean:.3f}</div>
-            <div class="subtext">95% CI: [{results.elasticity_own.ci_lower:.3f}, {results.elasticity_own.ci_upper:.3f}]</div>
-            <div class="subtext">{'Demand is ELASTIC (|ε| > 1)' if abs(results.elasticity_own.mean) > 1 else 'Demand is INELASTIC (|ε| < 1)'}</div>
+            <h3>Base Price Elasticity</h3>
+            <div class="value">{results.base_elasticity.mean:.3f}</div>
+            <div class="subtext">95% CI: [{results.base_elasticity.ci_lower:.3f}, {results.base_elasticity.ci_upper:.3f}]</div>
+            <div class="subtext">{'Demand is ELASTIC (|ε| > 1)' if abs(results.base_elasticity.mean) > 1 else 'Demand is INELASTIC (|ε| < 1)'}</div>
         </div>
+
+        {('<div class=\"stat-card\"><h3>Promotional Elasticity</h3><div class=\"value\">' + f'{results.promo_elasticity.mean:.3f}' + '</div><div class=\"subtext\">95% CI: [' + f'{results.promo_elasticity.ci_lower:.3f}, {results.promo_elasticity.ci_upper:.3f}' + ']</div></div>') if getattr(results, 'promo_elasticity', None) is not None else ''}
         
         {'<div class="stat-card"><h3>Cross-Price Elasticity</h3><div class="value">' + f'{results.elasticity_cross.mean:.3f}' + '</div><div class="subtext">95% CI: [' + f'{results.elasticity_cross.ci_lower:.3f}, {results.elasticity_cross.ci_upper:.3f}' + ']</div></div>' if results.elasticity_cross else ''}
         
@@ -661,20 +845,26 @@ def _create_html_content(results, data, output_dir, group_path):
         <p>Seasonal patterns in sales and estimated seasonal effects relative to Winter baseline.</p>
         <img src="seasonal_plot.png" alt="Seasonal Patterns">
         
-        <!-- Revenue Scenarios -->
-        <h2>💰 Revenue Impact Scenarios</h2>
-        <p>Expected revenue impact of different price changes with uncertainty bands.</p>
-        <img src="revenue_scenarios.png" alt="Revenue Scenarios">
+        <!-- Base vs Promo Comparison (V2) -->
+        {f'<h2>⚖️ Base vs Promotional Elasticity</h2><p>Side-by-side comparison of strategic (base) vs tactical (promo) responsiveness.</p><img src=\"base_vs_promo_comparison.png\" alt=\"Base vs Promo Comparison\">' if base_vs_promo_path else ''}
+
+        <!-- Revenue Scenarios - Base -->
+        <h2>💰 Revenue Scenarios - Base Price Changes</h2>
+        <p>Expected revenue impact of different <strong>base price</strong> changes with uncertainty bands.</p>
+        <img src="revenue_scenarios_base.png" alt="Revenue Scenarios (Base)">
+
+        <!-- Revenue Scenarios - Promo -->
+        {f'<h2>🏷️ Revenue Scenarios - Promotions</h2><p>Expected revenue impact of promotional discount depths with uncertainty bands.</p><img src=\"revenue_scenarios_promo.png\" alt=\"Revenue Scenarios (Promo)\">' if revenue_promo_path else ''}
         
         <!-- Group Comparison (if hierarchical) -->
         {f'<h2>🏪 Retailer Comparison</h2><p>Group-specific elasticities with partial pooling toward global mean.</p><img src="group_comparison.png" alt="Group Comparison">' if group_path else ''}
         
-        <!-- Revenue Impact Table -->
-        <h2>📋 Revenue Impact Table</h2>
+        <!-- Revenue Impact Table (Base Price) -->
+        <h2>📋 Revenue Impact Table (Base Price)</h2>
         <table>
             <thead>
                 <tr>
-                    <th>Price Change</th>
+                    <th>Base Price Change</th>
                     <th>Expected Volume Impact</th>
                     <th>Expected Revenue Impact</th>
                     <th>Probability Positive</th>
@@ -683,12 +873,44 @@ def _create_html_content(results, data, output_dir, group_path):
             <tbody>
 """
     
-    # Add revenue scenarios to table
+    # Add base price scenarios to table
     for price_change in [-5, -3, -1, 1, 3, 5]:
         impact = results.revenue_impact(price_change)
         html += f"""
                 <tr>
                     <td>{price_change:+d}%</td>
+                    <td>{impact['volume_impact_mean']:+.1f}%</td>
+                    <td style="color: {'green' if impact['revenue_impact_mean'] > 0 else 'red'}; font-weight: bold;">
+                        {impact['revenue_impact_mean']:+.1f}%
+                    </td>
+                    <td>{impact['probability_positive']*100:.0f}%</td>
+                </tr>
+"""
+
+    # Optional: promotions table (if promo elasticity is available)
+    if revenue_promo_path:
+        html += """
+            </tbody>
+        </table>
+
+        <h2>📋 Revenue Impact Table (Promotions)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Discount Depth</th>
+                    <th>Expected Volume Impact</th>
+                    <th>Expected Revenue Impact</th>
+                    <th>Probability Positive</th>
+                </tr>
+            </thead>
+            <tbody>
+"""
+
+        for discount in [5, 10, 15, 20]:
+            impact = results.promo_impact(discount)
+            html += f"""
+                <tr>
+                    <td>{discount:.0f}% off</td>
                     <td>{impact['volume_impact_mean']:+.1f}%</td>
                     <td style="color: {'green' if impact['revenue_impact_mean'] > 0 else 'red'}; font-weight: bold;">
                         {impact['revenue_impact_mean']:+.1f}%
@@ -751,9 +973,21 @@ def create_all_plots(results, data, output_dir='./plots'):
     
     plots['seasonal'] = plot_seasonal_patterns(results, data, output_path=str(output_dir / 'seasonal.png'))
     plt.close()
-    
-    plots['revenue'] = plot_revenue_scenarios(results, output_path=str(output_dir / 'revenue.png'))
+
+    # V2: separate scenario plots
+    plots['revenue_base'] = plot_revenue_scenarios_base(results, output_path=str(output_dir / 'revenue_base.png'))
     plt.close()
+
+    if getattr(results, 'promo_elasticity', None) is not None:
+        plots['revenue_promo'] = plot_revenue_scenarios_promo(results, output_path=str(output_dir / 'revenue_promo.png'))
+        plt.close()
+
+        plots['base_vs_promo'] = plot_base_vs_promo_comparison(results, output_path=str(output_dir / 'base_vs_promo.png'))
+        plt.close()
+    else:
+        # Legacy combined plot (kept for convenience)
+        plots['revenue'] = plot_revenue_scenarios(results, output_path=str(output_dir / 'revenue.png'))
+        plt.close()
     
     if hasattr(results, 'group_elasticities'):
         plots['groups'] = plot_group_comparison(results, output_path=str(output_dir / 'groups.png'))

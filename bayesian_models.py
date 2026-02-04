@@ -75,6 +75,10 @@ class PriorLibrary:
     def _default_priors() -> Dict:
         """Weakly informative priors (RECOMMENDED)"""
         return {
+            # V2: base vs promo elasticities
+            'base_elasticity': {'mu': -2.0, 'sigma': 0.5},
+            'promo_elasticity': {'mu': -4.0, 'sigma': 1.0},
+            # Backwards-compat (V1 naming)
             'elasticity_own': {'mu': -2.0, 'sigma': 0.5},
             'elasticity_cross': {'mu': 0.15, 'sigma': 0.15},
             'beta_promo': {'mu': 0.2, 'sigma': 0.2},
@@ -91,6 +95,9 @@ class PriorLibrary:
     def _informative_priors() -> Dict:
         """Informative priors based on frequentist results"""
         return {
+            'base_elasticity': {'mu': -1.8, 'sigma': 0.3},
+            'promo_elasticity': {'mu': -3.5, 'sigma': 0.5},
+            # Backwards-compat (V1 naming)
             'elasticity_own': {'mu': -2.22, 'sigma': 0.3},
             'elasticity_cross': {'mu': 0.07, 'sigma': 0.1},
             'beta_promo': {'mu': 0.25, 'sigma': 0.15},
@@ -107,6 +114,9 @@ class PriorLibrary:
     def _vague_priors() -> Dict:
         """Vague (non-informative) priors"""
         return {
+            'base_elasticity': {'mu': 0.0, 'sigma': 5.0},
+            'promo_elasticity': {'mu': 0.0, 'sigma': 5.0},
+            # Backwards-compat (V1 naming)
             'elasticity_own': {'mu': 0.0, 'sigma': 5.0},
             'elasticity_cross': {'mu': 0.0, 'sigma': 2.0},
             'beta_promo': {'mu': 0.0, 'sigma': 1.0},
@@ -165,17 +175,41 @@ class BayesianResults:
     
     def _extract_posteriors(self):
         """Extract posterior summaries"""
-        
-        # Own-price elasticity
-        samples = self.trace.posterior['elasticity_own'].values.flatten()
-        self.elasticity_own = PosteriorSummary(
-            mean=samples.mean(),
-            median=np.median(samples),
-            std=samples.std(),
-            ci_lower=np.percentile(samples, 2.5),
-            ci_upper=np.percentile(samples, 97.5)
+
+        # V2: Base price elasticity (preferred). Fall back to V1 `elasticity_own` if needed.
+        if 'base_elasticity' in self.trace.posterior:
+            base_samples = self.trace.posterior['base_elasticity'].values.flatten()
+        else:
+            base_samples = self.trace.posterior['elasticity_own'].values.flatten()
+
+        self.base_elasticity = PosteriorSummary(
+            mean=base_samples.mean(),
+            median=np.median(base_samples),
+            std=base_samples.std(),
+            ci_lower=np.percentile(base_samples, 2.5),
+            ci_upper=np.percentile(base_samples, 97.5),
         )
-        self.elasticity_own_samples = samples
+        self.base_elasticity_samples = base_samples
+
+        # V2: Promotional elasticity (coefficient on promo-depth / price-change during promos)
+        # May be absent in legacy traces.
+        if 'promo_elasticity' in self.trace.posterior:
+            promo_samples = self.trace.posterior['promo_elasticity'].values.flatten()
+            self.promo_elasticity = PosteriorSummary(
+                mean=promo_samples.mean(),
+                median=np.median(promo_samples),
+                std=promo_samples.std(),
+                ci_lower=np.percentile(promo_samples, 2.5),
+                ci_upper=np.percentile(promo_samples, 97.5),
+            )
+            self.promo_elasticity_samples = promo_samples
+        else:
+            self.promo_elasticity = None
+            self.promo_elasticity_samples = None
+
+        # Backwards-compat aliases
+        self.elasticity_own = self.base_elasticity
+        self.elasticity_own_samples = self.base_elasticity_samples
         
         # Cross-price elasticity
         if 'elasticity_cross' in self.trace.posterior:
@@ -190,7 +224,7 @@ class BayesianResults:
         else:
             self.elasticity_cross = None
         
-        # Promo effect
+        # Legacy: Promo effect (V1)
         if 'beta_promo' in self.trace.posterior:
             samples = self.trace.posterior['beta_promo'].values.flatten()
             self.beta_promo = PosteriorSummary(
@@ -265,16 +299,25 @@ class BayesianResults:
         lines.append("POSTERIOR ESTIMATES")
         lines.append("-"*80)
         
-        lines.append(f"\nOwn-Price Elasticity: {self.elasticity_own}")
-        if abs(self.elasticity_own.mean) > 1:
+        lines.append(f"\nBase Price Elasticity: {self.base_elasticity}")
+        if abs(self.base_elasticity.mean) > 1:
             lines.append(f"  → Demand is ELASTIC (price increases hurt revenue)")
         else:
             lines.append(f"  → Demand is INELASTIC (price increases boost revenue)")
+
+        if self.promo_elasticity is not None:
+            lines.append(f"\nPromotional Elasticity: {self.promo_elasticity}")
+            try:
+                multiplier = abs(self.promo_elasticity.mean) / max(abs(self.base_elasticity.mean), 1e-9)
+                lines.append(f"  → Promotions are ~{multiplier:.1f}x more responsive than base price (magnitude ratio)")
+            except Exception:
+                pass
         
         if self.elasticity_cross:
             lines.append(f"\nCross-Price Elasticity: {self.elasticity_cross}")
         
-        if self.beta_promo:
+        if self.beta_promo and self.promo_elasticity is None:
+            # Only show this legacy interpretation if we did not estimate promo elasticity.
             lines.append(f"\nPromotional Effect: {self.beta_promo}")
             lift = (np.exp(self.beta_promo.mean) - 1) * 100
             lines.append(f"  → Promotions boost sales by {lift:.1f}%")
@@ -317,38 +360,85 @@ class BayesianResults:
         else:
             raise ValueError("Statement must contain '<' or '>'")
     
-    def revenue_impact(self, price_change_pct: float) -> Dict:
+    def compare_elasticities(self) -> Dict:
         """
-        Calculate revenue impact of price change
-        
-        Parameters:
-        ----------
-        price_change_pct : float
-            Price change in percent (e.g., -3 for 3% reduction)
-        
+        Compare promotional elasticity magnitude vs base elasticity magnitude.
+
         Returns:
         -------
-        Dict
-            Revenue impact with uncertainty
+        Dict with multiplier distribution (|promo| / |base|) and probability promo is larger in magnitude.
         """
-        
-        # Get elasticity samples
-        elasticity_samples = self.elasticity_own_samples
-        
-        # Volume impact
-        volume_impact = elasticity_samples * price_change_pct
-        
-        # Revenue impact
-        revenue_impact = price_change_pct + volume_impact
-        
+        if self.promo_elasticity_samples is None:
+            raise ValueError("Promotional elasticity not available in this result.")
+
+        base = self.base_elasticity_samples
+        promo = self.promo_elasticity_samples
+
+        ratio = (np.abs(promo) / np.maximum(np.abs(base), 1e-9))
         return {
-            'price_change': price_change_pct,
-            'volume_impact_mean': volume_impact.mean(),
-            'volume_impact_ci': [np.percentile(volume_impact, 2.5), np.percentile(volume_impact, 97.5)],
-            'revenue_impact_mean': revenue_impact.mean(),
-            'revenue_impact_ci': [np.percentile(revenue_impact, 2.5), np.percentile(revenue_impact, 97.5)],
-            'probability_positive': (revenue_impact > 0).mean()
+            'multiplier_mean': float(ratio.mean()),
+            'multiplier_ci': [float(np.percentile(ratio, 2.5)), float(np.percentile(ratio, 97.5))],
+            'probability_promo_more_responsive': float((np.abs(promo) > np.abs(base)).mean()),
         }
+
+    def base_price_impact(self, price_change_pct: float) -> Dict:
+        """
+        Revenue impact of a permanent/base price change using base price elasticity.
+
+        Uses multiplicative revenue math:
+          revenue_multiplier = (1 + volume_change%) * (1 + price_change%)
+        """
+        base_samples = self.base_elasticity_samples
+        volume_impact = base_samples * price_change_pct  # % volume change
+
+        revenue_multiplier = (1 + volume_impact / 100.0) * (1 + price_change_pct / 100.0)
+        revenue_impact = (revenue_multiplier - 1) * 100.0
+
+        return {
+            'price_change_pct': float(price_change_pct),
+            'volume_impact_mean': float(volume_impact.mean()),
+            'volume_impact_ci': [float(np.percentile(volume_impact, 2.5)), float(np.percentile(volume_impact, 97.5))],
+            'revenue_impact_mean': float(revenue_impact.mean()),
+            'revenue_impact_ci': [float(np.percentile(revenue_impact, 2.5)), float(np.percentile(revenue_impact, 97.5))],
+            'probability_positive': float((revenue_impact > 0).mean()),
+        }
+
+    def promo_impact(self, discount_depth_pct: float) -> Dict:
+        """
+        Revenue impact of a promotional discount of given depth (percent off),
+        using promotional elasticity.
+
+        Parameters:
+        ----------
+        discount_depth_pct : float
+            Positive discount depth, e.g. 10 means 10% off.
+        """
+        if self.promo_elasticity_samples is None:
+            raise ValueError("Promotional elasticity not available in this result.")
+
+        price_change_pct = -abs(float(discount_depth_pct))
+        promo_samples = self.promo_elasticity_samples
+
+        volume_impact = promo_samples * price_change_pct  # % volume change (negative * negative => positive)
+
+        revenue_multiplier = (1 + volume_impact / 100.0) * (1 + price_change_pct / 100.0)
+        revenue_impact = (revenue_multiplier - 1) * 100.0
+
+        return {
+            'discount_depth_pct': float(discount_depth_pct),
+            'price_change_pct': float(price_change_pct),
+            'volume_impact_mean': float(volume_impact.mean()),
+            'volume_impact_ci': [float(np.percentile(volume_impact, 2.5)), float(np.percentile(volume_impact, 97.5))],
+            'revenue_impact_mean': float(revenue_impact.mean()),
+            'revenue_impact_ci': [float(np.percentile(revenue_impact, 2.5)), float(np.percentile(revenue_impact, 97.5))],
+            'probability_positive': float((revenue_impact > 0).mean()),
+        }
+
+    def revenue_impact(self, price_change_pct: float) -> Dict:
+        """
+        Backwards-compatible alias: treat this as base price impact.
+        """
+        return self.base_price_impact(price_change_pct=price_change_pct)
 
 
 class HierarchicalResults(BayesianResults):
@@ -364,42 +454,112 @@ class HierarchicalResults(BayesianResults):
     
     def _extract_group_posteriors(self):
         """Extract group-specific posteriors"""
-        
-        # Global elasticity
-        samples = self.trace.posterior['mu_global_own'].values.flatten()
-        self.global_elasticity = PosteriorSummary(
-            mean=samples.mean(),
-            median=np.median(samples),
-            std=samples.std(),
-            ci_lower=np.percentile(samples, 2.5),
-            ci_upper=np.percentile(samples, 97.5)
-        )
-        
-        # Between-group variance
-        samples = self.trace.posterior['sigma_group_own'].values.flatten()
-        self.sigma_group = PosteriorSummary(
-            mean=samples.mean(),
-            median=np.median(samples),
-            std=samples.std(),
-            ci_lower=np.percentile(samples, 2.5),
-            ci_upper=np.percentile(samples, 97.5)
-        )
-        
-        # Group-specific elasticities
-        self.group_elasticities = {}
-        elasticity_samples = self.trace.posterior['elasticity_own'].values
-        
-        for i, group in enumerate(self.groups):
-            samples = elasticity_samples[:, :, i].flatten()
-            self.group_elasticities[group] = PosteriorSummary(
+        is_v2 = 'mu_global_base' in self.trace.posterior and 'base_elasticity' in self.trace.posterior
+
+        if is_v2:
+            # Global base elasticity
+            samples = self.trace.posterior['mu_global_base'].values.flatten()
+            self.global_base_elasticity = PosteriorSummary(
                 mean=samples.mean(),
                 median=np.median(samples),
                 std=samples.std(),
                 ci_lower=np.percentile(samples, 2.5),
-                ci_upper=np.percentile(samples, 97.5)
+                ci_upper=np.percentile(samples, 97.5),
             )
+
+            # Global promo elasticity
+            samples = self.trace.posterior['mu_global_promo'].values.flatten()
+            self.global_promo_elasticity = PosteriorSummary(
+                mean=samples.mean(),
+                median=np.median(samples),
+                std=samples.std(),
+                ci_lower=np.percentile(samples, 2.5),
+                ci_upper=np.percentile(samples, 97.5),
+            )
+
+            # Between-group variance (base)
+            samples = self.trace.posterior['sigma_group_base'].values.flatten()
+            self.sigma_group_base = PosteriorSummary(
+                mean=samples.mean(),
+                median=np.median(samples),
+                std=samples.std(),
+                ci_lower=np.percentile(samples, 2.5),
+                ci_upper=np.percentile(samples, 97.5),
+            )
+
+            # Between-group variance (promo)
+            samples = self.trace.posterior['sigma_group_promo'].values.flatten()
+            self.sigma_group_promo = PosteriorSummary(
+                mean=samples.mean(),
+                median=np.median(samples),
+                std=samples.std(),
+                ci_lower=np.percentile(samples, 2.5),
+                ci_upper=np.percentile(samples, 97.5),
+            )
+
+            # Group-specific elasticities
+            self.group_base_elasticities = {}
+            self.group_promo_elasticities = {}
+
+            base_samples_3d = self.trace.posterior['base_elasticity'].values
+            promo_samples_3d = self.trace.posterior['promo_elasticity'].values
+
+            for i, group in enumerate(self.groups):
+                s_base = base_samples_3d[:, :, i].flatten()
+                s_promo = promo_samples_3d[:, :, i].flatten()
+                self.group_base_elasticities[group] = PosteriorSummary(
+                    mean=s_base.mean(),
+                    median=np.median(s_base),
+                    std=s_base.std(),
+                    ci_lower=np.percentile(s_base, 2.5),
+                    ci_upper=np.percentile(s_base, 97.5),
+                )
+                self.group_promo_elasticities[group] = PosteriorSummary(
+                    mean=s_promo.mean(),
+                    median=np.median(s_promo),
+                    std=s_promo.std(),
+                    ci_lower=np.percentile(s_promo, 2.5),
+                    ci_upper=np.percentile(s_promo, 97.5),
+                )
+
+            # Backwards-compat aliases
+            self.global_elasticity = self.global_base_elasticity
+            self.sigma_group = self.sigma_group_base
+            self.group_elasticities = self.group_base_elasticities
+
+        else:
+            # Legacy V1 hierarchical extraction
+            samples = self.trace.posterior['mu_global_own'].values.flatten()
+            self.global_elasticity = PosteriorSummary(
+                mean=samples.mean(),
+                median=np.median(samples),
+                std=samples.std(),
+                ci_lower=np.percentile(samples, 2.5),
+                ci_upper=np.percentile(samples, 97.5),
+            )
+
+            samples = self.trace.posterior['sigma_group_own'].values.flatten()
+            self.sigma_group = PosteriorSummary(
+                mean=samples.mean(),
+                median=np.median(samples),
+                std=samples.std(),
+                ci_lower=np.percentile(samples, 2.5),
+                ci_upper=np.percentile(samples, 97.5),
+            )
+
+            self.group_elasticities = {}
+            elasticity_samples = self.trace.posterior['elasticity_own'].values
+            for i, group in enumerate(self.groups):
+                s = elasticity_samples[:, :, i].flatten()
+                self.group_elasticities[group] = PosteriorSummary(
+                    mean=s.mean(),
+                    median=np.median(s),
+                    std=s.std(),
+                    ci_lower=np.percentile(s, 2.5),
+                    ci_upper=np.percentile(s, 97.5),
+                )
     
-    def compare_groups(self, group1: str, group2: str) -> Dict:
+    def compare_groups(self, group1: str, group2: str, elasticity_type: str = 'base') -> Dict:
         """
         Compare two groups statistically
         
@@ -412,8 +572,13 @@ class HierarchicalResults(BayesianResults):
         idx1 = list(self.groups).index(group1)
         idx2 = list(self.groups).index(group2)
         
-        samples1 = self.trace.posterior['elasticity_own'].values[:, :, idx1].flatten()
-        samples2 = self.trace.posterior['elasticity_own'].values[:, :, idx2].flatten()
+        if 'base_elasticity' in self.trace.posterior and elasticity_type.lower() in ['base', 'promo']:
+            var = 'base_elasticity' if elasticity_type.lower() == 'base' else 'promo_elasticity'
+        else:
+            var = 'elasticity_own'
+
+        samples1 = self.trace.posterior[var].values[:, :, idx1].flatten()
+        samples2 = self.trace.posterior[var].values[:, :, idx2].flatten()
         
         diff = samples1 - samples2
         
@@ -526,12 +691,17 @@ class SimpleBayesianModel:
         
         # Extract data
         y = data['Log_Unit_Sales_SI'].values
-        X_own = data['Log_Price_SI'].values
+        use_dual = ('Log_Base_Price_SI' in data.columns) and ('Promo_Depth_SI' in data.columns)
+        X_base = data['Log_Base_Price_SI'].values if use_dual else data['Log_Price_SI'].values
         X_cross = data['Log_Price_PL'].values
         X_has_competitor = data['has_competitor'].values if 'has_competitor' in data else np.ones(len(data))
 
-        X_promo = data['Promo_Intensity_SI'].values if 'Promo_Intensity_SI' in data else None
-        X_has_promo = data['has_promo'].values if 'has_promo' in data else (np.ones(len(data)) if X_promo is not None else None)
+        if use_dual:
+            X_promo = data['Promo_Depth_SI'].values
+            X_has_promo = data['has_promo'].values if 'has_promo' in data else np.ones(len(data))
+        else:
+            X_promo = data['Promo_Intensity_SI'].values if 'Promo_Intensity_SI' in data else None
+            X_has_promo = data['has_promo'].values if 'has_promo' in data else (np.ones(len(data)) if X_promo is not None else None)
 
         # Safety: ensure no NaNs propagate into the linear predictor
         X_cross = np.nan_to_num(X_cross, nan=0.0)
@@ -549,24 +719,34 @@ class SimpleBayesianModel:
             intercept = pm.Normal('intercept', 
                                  mu=self.priors['intercept']['mu'],
                                  sigma=self.priors['intercept']['sigma'])
-            
-            elasticity_own = pm.Normal('elasticity_own',
-                                       mu=self.priors['elasticity_own']['mu'],
-                                       sigma=self.priors['elasticity_own']['sigma'])
+
+            base_elasticity = pm.Normal(
+                'base_elasticity',
+                mu=self.priors['base_elasticity']['mu'],
+                sigma=self.priors['base_elasticity']['sigma']
+            )
             
             elasticity_cross = pm.Normal('elasticity_cross',
                                          mu=self.priors['elasticity_cross']['mu'],
                                          sigma=self.priors['elasticity_cross']['sigma'])
             
             # Linear predictor
-            mu = intercept + elasticity_own * X_own + elasticity_cross * (X_cross * X_has_competitor)
+            mu = intercept + base_elasticity * X_base + elasticity_cross * (X_cross * X_has_competitor)
             
             # Optional features
             if X_promo is not None:
-                beta_promo = pm.Normal('beta_promo',
-                                      mu=self.priors['beta_promo']['mu'],
-                                      sigma=self.priors['beta_promo']['sigma'])
-                mu += beta_promo * (X_promo * X_has_promo)
+                if use_dual:
+                    promo_elasticity = pm.Normal(
+                        'promo_elasticity',
+                        mu=self.priors['promo_elasticity']['mu'],
+                        sigma=self.priors['promo_elasticity']['sigma']
+                    )
+                    mu += promo_elasticity * (X_promo * X_has_promo)
+                else:
+                    beta_promo = pm.Normal('beta_promo',
+                                          mu=self.priors['beta_promo']['mu'],
+                                          sigma=self.priors['beta_promo']['sigma'])
+                    mu += beta_promo * (X_promo * X_has_promo)
             
             if X_spring is not None:
                 beta_spring = pm.Normal('beta_spring',
@@ -719,14 +899,19 @@ class HierarchicalBayesianModel:
         
         # Extract data
         y = data['Log_Unit_Sales_SI'].values
-        X_own = data['Log_Price_SI'].values
+        use_dual = ('Log_Base_Price_SI' in data.columns) and ('Promo_Depth_SI' in data.columns)
+        X_base = data['Log_Base_Price_SI'].values if use_dual else data['Log_Price_SI'].values
         X_cross = data['Log_Price_PL'].values
         X_has_competitor = data['has_competitor'].values if 'has_competitor' in data else np.ones(len(data))
         group_idx = pd.Categorical(data['Retailer']).codes
         n_groups = len(self.groups)
         
-        X_promo = data['Promo_Intensity_SI'].values if 'Promo_Intensity_SI' in data else None
-        X_has_promo = data['has_promo'].values if 'has_promo' in data else (np.ones(len(data)) if X_promo is not None else None)
+        if use_dual:
+            X_promo = data['Promo_Depth_SI'].values
+            X_has_promo = data['has_promo'].values if 'has_promo' in data else np.ones(len(data))
+        else:
+            X_promo = data['Promo_Intensity_SI'].values if 'Promo_Intensity_SI' in data else None
+            X_has_promo = data['has_promo'].values if 'has_promo' in data else (np.ones(len(data)) if X_promo is not None else None)
         X_spring = data['Spring'].values if 'Spring' in data else None
         X_summer = data['Summer'].values if 'Summer' in data else None
         X_fall = data['Fall'].values if 'Fall' in data else None
@@ -739,19 +924,54 @@ class HierarchicalBayesianModel:
             X_has_promo = np.nan_to_num(X_has_promo, nan=0.0)
         
         with pm.Model() as model:
-            # GLOBAL (POPULATION) PARAMETERS
-            mu_global_own = pm.Normal('mu_global_own',
-                                      mu=self.priors['elasticity_own']['mu'],
-                                      sigma=self.priors['elasticity_own']['sigma'])
-            
-            sigma_group_own = pm.HalfNormal('sigma_group_own',
-                                           sigma=self.priors['sigma_group']['sigma'])
-            
-            # GROUP-SPECIFIC PARAMETERS (partial pooling)
-            elasticity_own = pm.Normal('elasticity_own',
-                                       mu=mu_global_own,
-                                       sigma=sigma_group_own,
-                                       shape=n_groups)
+            if use_dual:
+                # GLOBAL (POPULATION) PARAMETERS
+                mu_global_base = pm.Normal(
+                    'mu_global_base',
+                    mu=self.priors['base_elasticity']['mu'],
+                    sigma=self.priors['base_elasticity']['sigma'],
+                )
+                sigma_group_base = pm.HalfNormal(
+                    'sigma_group_base',
+                    sigma=self.priors['sigma_group']['sigma'],
+                )
+
+                mu_global_promo = pm.Normal(
+                    'mu_global_promo',
+                    mu=self.priors['promo_elasticity']['mu'],
+                    sigma=self.priors['promo_elasticity']['sigma'],
+                )
+                sigma_group_promo = pm.HalfNormal(
+                    'sigma_group_promo',
+                    sigma=self.priors['sigma_group']['sigma'],
+                )
+
+                # GROUP-SPECIFIC PARAMETERS (partial pooling)
+                base_elasticity = pm.Normal(
+                    'base_elasticity',
+                    mu=mu_global_base,
+                    sigma=sigma_group_base,
+                    shape=n_groups,
+                )
+                promo_elasticity = pm.Normal(
+                    'promo_elasticity',
+                    mu=mu_global_promo,
+                    sigma=sigma_group_promo,
+                    shape=n_groups,
+                )
+            else:
+                # Legacy V1 global/group parameters
+                mu_global_own = pm.Normal('mu_global_own',
+                                          mu=self.priors['elasticity_own']['mu'],
+                                          sigma=self.priors['elasticity_own']['sigma'])
+                
+                sigma_group_own = pm.HalfNormal('sigma_group_own',
+                                               sigma=self.priors['sigma_group']['sigma'])
+                
+                elasticity_own = pm.Normal('elasticity_own',
+                                           mu=mu_global_own,
+                                           sigma=sigma_group_own,
+                                           shape=n_groups)
             
             # Group-specific intercepts
             mu_global_intercept = pm.Normal('mu_global_intercept',
@@ -772,14 +992,28 @@ class HierarchicalBayesianModel:
                                          sigma=self.priors['elasticity_cross']['sigma'])
             
             # Linear predictor
-            mu = intercept[group_idx] + elasticity_own[group_idx] * X_own + elasticity_cross * (X_cross * X_has_competitor)
+            if use_dual:
+                mu = (
+                    intercept[group_idx]
+                    + base_elasticity[group_idx] * X_base
+                    + elasticity_cross * (X_cross * X_has_competitor)
+                )
+            else:
+                mu = (
+                    intercept[group_idx]
+                    + elasticity_own[group_idx] * X_base
+                    + elasticity_cross * (X_cross * X_has_competitor)
+                )
             
             # Optional shared features
             if X_promo is not None:
-                beta_promo = pm.Normal('beta_promo',
-                                      mu=self.priors['beta_promo']['mu'],
-                                      sigma=self.priors['beta_promo']['sigma'])
-                mu += beta_promo * (X_promo * X_has_promo)
+                if use_dual:
+                    mu += promo_elasticity[group_idx] * (X_promo * X_has_promo)
+                else:
+                    beta_promo = pm.Normal('beta_promo',
+                                          mu=self.priors['beta_promo']['mu'],
+                                          sigma=self.priors['beta_promo']['sigma'])
+                    mu += beta_promo * (X_promo * X_has_promo)
             
             if X_spring is not None:
                 beta_spring = pm.Normal('beta_spring',

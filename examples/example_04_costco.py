@@ -1,7 +1,7 @@
 """
 Example 4: Adding Costco with Missing Data
 
-This example demonstrates:
+This example demonstrates (V2):
 - Adding a third retailer (Costco) with incomplete data
 - Configuring retailer-specific features
 - Handling missing promotional data
@@ -66,6 +66,7 @@ prep_config = PrepConfig(
     retailer_filter='All',         # Keep all retailers separate
     include_seasonality=True,
     include_promotions=True,       # Will be included for BJ's/Sam's only
+    separate_base_promo=True,      # V2: dual elasticity (default-on)
     retailers=retailer_config,     # Pass retailer-specific config
     verbose=True
 )
@@ -160,16 +161,18 @@ print(f"\n📈 Between-Retailer Variation:")
 print(f"  σ_group = {results.sigma_group.mean:.3f}")
 
 # All retailer-specific estimates
-print(f"\n🏪 Retailer-Specific Elasticities:")
-for retailer, elasticity in results.group_elasticities.items():
+print(f"\n🏪 Retailer-Specific Elasticities (Base + Promo):")
+for retailer in results.groups:
+    base_e = results.group_base_elasticities[retailer]
+    promo_e = results.group_promo_elasticities[retailer]
     print(f"\n  {retailer}:")
-    print(f"    Elasticity: {elasticity.mean:.3f} [{elasticity.ci_lower:.3f}, {elasticity.ci_upper:.3f}]")
+    print(f"    Base:  {base_e.mean:.3f} [{base_e.ci_lower:.3f}, {base_e.ci_upper:.3f}]")
+    print(f"    Promo: {promo_e.mean:.3f} [{promo_e.ci_lower:.3f}, {promo_e.ci_upper:.3f}]")
     
-    # Note data availability
     if retailer == 'Costco':
-        print(f"    ⚠️ Note: Estimated WITHOUT promotional data")
-        print(f"    → Elasticity based on price variation only")
-        print(f"    → Still benefits from pooling with BJ's/Sam's")
+        print(f"    ⚠️ Note: Costco has no promo feature in data (has_promo=0)")
+        print(f"    → Promo elasticity is prior-informed via hierarchical pooling")
+        print(f"    → Base elasticity still uses Costco's own price variation + pooling")
 
 # ============================================================================
 # STEP 6: COMPARE ALL THREE RETAILERS
@@ -187,10 +190,11 @@ retailer_pairs = [
 ]
 
 for retailer1, retailer2 in retailer_pairs:
-    comparison = results.compare_groups(retailer1, retailer2)
+    comparison_base = results.compare_groups(retailer1, retailer2, elasticity_type='base')
+    comparison_promo = results.compare_groups(retailer1, retailer2, elasticity_type='promo')
     print(f"\n🔍 {retailer1} vs {retailer2}:")
-    print(f"  Difference: {comparison['difference_mean']:.3f}")
-    print(f"  P({retailer1} more elastic) = {comparison['probability']:.1%}")
+    print(f"  Base diff:  {comparison_base['difference_mean']:.3f} | P({retailer1} more elastic on base) = {comparison_base['probability']:.1%}")
+    print(f"  Promo diff: {comparison_promo['difference_mean']:.3f} | P({retailer1} more elastic on promo) = {comparison_promo['probability']:.1%}")
 
 # ============================================================================
 # STEP 7: UNDERSTAND THE BENEFITS

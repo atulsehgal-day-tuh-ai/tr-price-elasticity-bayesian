@@ -148,6 +148,12 @@ Examples:
     parser.add_argument('--retailer-filter', type=str, default='All',
                        choices=['Overall', 'All', 'BJs', 'Sams', 'Costco'],
                        help='Retailer filter (default: All)')
+
+    # V2: Dual elasticity options (default-on)
+    parser.add_argument('--dual-elasticity', action='store_true',
+                       help='Enable dual elasticity (base vs promo). Default behavior is ON.')
+    parser.add_argument('--no-dual-elasticity', action='store_true',
+                       help='Disable dual elasticity and use legacy V1 features (not recommended).')
     
     # Output options
     parser.add_argument('--output', type=str, default='./output',
@@ -206,8 +212,11 @@ def run_pipeline(config: dict, logger):
         include_seasonality=config['data']['include_seasonality'],
         include_promotions=config['data']['include_promotions'],
         include_time_trend=config['data']['include_time_trend'],
+        separate_base_promo=config['data'].get('separate_base_promo', True),
         log_transform_sales=config['data']['log_transform_sales'],
         log_transform_prices=config['data']['log_transform_prices'],
+        base_price_proxy_window=config['data'].get('base_price_proxy_window', 8),
+        base_price_imputed_warn_threshold=config['data'].get('base_price_imputed_warn_threshold', 0.30),
         retailers=config['data'].get('retailers'),
         verbose=_get_verbose_flag(config, default=True)
     )
@@ -296,24 +305,43 @@ def run_pipeline(config: dict, logger):
         results.trace.to_netcdf(trace_path)
         logger.info(f"✓ Trace saved to: {trace_path}")
     
-    # Create results table
+    # Create results table (V2 prefers base + promo elasticities)
+    params = []
+    means = []
+    lows = []
+    highs = []
+
+    # Base elasticity (always present)
+    params.append('Base Price Elasticity')
+    means.append(results.base_elasticity.mean)
+    lows.append(results.base_elasticity.ci_lower)
+    highs.append(results.base_elasticity.ci_upper)
+
+    # Promo elasticity (V2)
+    if getattr(results, 'promo_elasticity', None) is not None:
+        params.append('Promotional Elasticity')
+        means.append(results.promo_elasticity.mean)
+        lows.append(results.promo_elasticity.ci_lower)
+        highs.append(results.promo_elasticity.ci_upper)
+    elif getattr(results, 'beta_promo', None) is not None:
+        # Legacy fallback
+        params.append('Promotional Effect (legacy)')
+        means.append(results.beta_promo.mean)
+        lows.append(results.beta_promo.ci_lower)
+        highs.append(results.beta_promo.ci_upper)
+
+    # Cross-price elasticity (optional)
+    if results.elasticity_cross:
+        params.append('Cross-Price Elasticity')
+        means.append(results.elasticity_cross.mean)
+        lows.append(results.elasticity_cross.ci_lower)
+        highs.append(results.elasticity_cross.ci_upper)
+
     results_data = {
-        'Parameter': ['Own-Price Elasticity', 'Cross-Price Elasticity', 'Promotional Effect'],
-        'Mean': [
-            results.elasticity_own.mean,
-            results.elasticity_cross.mean if results.elasticity_cross else None,
-            results.beta_promo.mean if results.beta_promo else None
-        ],
-        'CI_Lower': [
-            results.elasticity_own.ci_lower,
-            results.elasticity_cross.ci_lower if results.elasticity_cross else None,
-            results.beta_promo.ci_lower if results.beta_promo else None
-        ],
-        'CI_Upper': [
-            results.elasticity_own.ci_upper,
-            results.elasticity_cross.ci_upper if results.elasticity_cross else None,
-            results.beta_promo.ci_upper if results.beta_promo else None
-        ]
+        'Parameter': params,
+        'Mean': means,
+        'CI_Lower': lows,
+        'CI_Upper': highs,
     }
     
     import pandas as pd
@@ -365,12 +393,15 @@ def run_pipeline(config: dict, logger):
     logger.info("="*80)
     
     logger.info(f"\n📊 KEY RESULTS:")
-    logger.info(f"  Own-Price Elasticity: {results.elasticity_own.mean:.3f} [{results.elasticity_own.ci_lower:.3f}, {results.elasticity_own.ci_upper:.3f}]")
+    logger.info(f"  Base Price Elasticity: {results.base_elasticity.mean:.3f} [{results.base_elasticity.ci_lower:.3f}, {results.base_elasticity.ci_upper:.3f}]")
+
+    if getattr(results, 'promo_elasticity', None) is not None:
+        logger.info(f"  Promotional Elasticity: {results.promo_elasticity.mean:.3f} [{results.promo_elasticity.ci_lower:.3f}, {results.promo_elasticity.ci_upper:.3f}]")
     
     if results.elasticity_cross:
         logger.info(f"  Cross-Price Elasticity: {results.elasticity_cross.mean:.3f} [{results.elasticity_cross.ci_lower:.3f}, {results.elasticity_cross.ci_upper:.3f}]")
     
-    if abs(results.elasticity_own.mean) > 1:
+    if abs(results.base_elasticity.mean) > 1:
         logger.info(f"\n  → Demand is ELASTIC (price increases hurt revenue)")
     else:
         logger.info(f"\n  → Demand is INELASTIC (price increases boost revenue)")
@@ -423,8 +454,11 @@ def main():
                 'include_seasonality': True,
                 'include_promotions': True,
                 'include_time_trend': True,
+                'separate_base_promo': (not args.no_dual_elasticity),
                 'log_transform_sales': True,
                 'log_transform_prices': True,
+                'base_price_proxy_window': 8,
+                'base_price_imputed_warn_threshold': 0.30,
                 'retailers': None
             },
             'model': {

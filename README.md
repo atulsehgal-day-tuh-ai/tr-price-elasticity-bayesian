@@ -5,7 +5,8 @@ A complete, production-ready system for Bayesian price elasticity analysis with 
 ## 🎯 Features
 
 - **Data Transformation**: Automated pipeline from raw Circana data to model-ready format
-- **Bayesian Modeling**: Simple and hierarchical models with partial pooling
+- **Bayesian Modeling (V2)**: Simple and hierarchical models with **dual elasticities** (base vs promo)
+- **Base vs Promo Separation (V2)**: Separates strategic (base price) impact from tactical (promotional discount) impact
 - **Hierarchical Support**: Multi-retailer analysis with automatic shrinkage
 - **Flexible Priors**: Default (weakly informative), informative, vague, or custom
 - **Missing Data Handling**: Automatically handles retailers with missing features (e.g., Costco without promo data)
@@ -47,6 +48,14 @@ results = model.fit(df)
 # 3. Generate report
 generate_html_report(results, output_dir='./output')
 ```
+
+### Input data requirement (V2)
+
+For best results in **V2 dual-elasticity mode**, your Circana CSVs should include:
+- Total sales columns: `Dollar Sales`, `Unit Sales`
+- Base sales columns: `Base Dollar Sales`, `Base Unit Sales`
+
+If base sales columns are missing or undefined for some weeks, the system will **estimate/impute** a base price from observed average prices (with warnings if heavy imputation is needed).
 
 ### Command Line
 
@@ -145,6 +154,13 @@ print(f"Global elasticity: {results.global_elasticity.mean:.3f}")
 print(f"BJ's elasticity: {results.group_elasticities[\"BJ's\"].mean:.3f}")
 ```
 
+In V2 dual-elasticity mode, you also get:
+
+```python
+print(f"Base price elasticity: {results.base_elasticity.mean:.3f}")
+print(f"Promo elasticity: {results.promo_elasticity.mean:.3f}")
+```
+
 ### Probability Statements
 
 ```python
@@ -155,6 +171,14 @@ print(f"P(elasticity < -2.0) = {prob:.1%}")
 # Revenue impact
 impact = results.revenue_impact(price_change_pct=-3)
 print(f"3% price cut: {impact['revenue_impact_mean']:+.1f}% revenue impact")
+```
+
+V2 also supports separate scenario helpers:
+
+```python
+base_impact = results.base_price_impact(price_change_pct=5)
+promo_impact = results.promo_impact(discount_depth_pct=10)
+print(base_impact, promo_impact)
 ```
 
 ## 📂 Project Structure

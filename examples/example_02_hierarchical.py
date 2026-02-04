@@ -1,9 +1,9 @@
 """
 Example 2: Hierarchical Bayesian Model - Multi-Retailer Analysis
 
-This example demonstrates:
+This example demonstrates (V2):
 - Hierarchical modeling with partial pooling
-- Group-specific elasticity estimates
+- Group-specific base AND promotional elasticity estimates
 - Comparing retailers statistically
 - Benefits of borrowing strength across groups
 
@@ -32,6 +32,7 @@ prep_config = PrepConfig(
     retailer_filter='All',  # Keep retailers separate!
     include_seasonality=True,
     include_promotions=True,
+    separate_base_promo=True,  # V2: dual elasticity (default-on)
     verbose=True
 )
 
@@ -99,29 +100,35 @@ print("GLOBAL VS GROUP-SPECIFIC ESTIMATES")
 print("="*80)
 
 # Global (population) estimate
-print(f"\n📊 Global Elasticity (across all retailers):")
-print(f"  Mean: {results.global_elasticity.mean:.3f}")
-print(f"  95% CI: [{results.global_elasticity.ci_lower:.3f}, {results.global_elasticity.ci_upper:.3f}]")
+print(f"\n📊 Global Base Elasticity (across all retailers):")
+print(f"  Mean: {results.global_base_elasticity.mean:.3f}")
+print(f"  95% CI: [{results.global_base_elasticity.ci_lower:.3f}, {results.global_base_elasticity.ci_upper:.3f}]")
+
+print(f"\n📊 Global Promotional Elasticity (across all retailers):")
+print(f"  Mean: {results.global_promo_elasticity.mean:.3f}")
+print(f"  95% CI: [{results.global_promo_elasticity.ci_lower:.3f}, {results.global_promo_elasticity.ci_upper:.3f}]")
 
 # Between-group variance
-print(f"\n📈 Between-Retailer Variation:")
-print(f"  σ_group = {results.sigma_group.mean:.3f}")
-if results.sigma_group.mean < 0.15:
+print(f"\n📈 Between-Retailer Variation (Base):")
+print(f"  σ_group_base = {results.sigma_group_base.mean:.3f}")
+if results.sigma_group_base.mean < 0.15:
     print(f"  → Retailers are VERY SIMILAR")
-elif results.sigma_group.mean < 0.3:
+elif results.sigma_group_base.mean < 0.3:
     print(f"  → Retailers have MODERATE variation")
 else:
     print(f"  → Retailers DIFFER SUBSTANTIALLY")
 
 # Group-specific estimates
 print(f"\n🏪 Retailer-Specific Elasticities:")
-for retailer, elasticity in results.group_elasticities.items():
+for retailer in results.groups:
+    elasticity = results.group_base_elasticities[retailer]
+    promo = results.group_promo_elasticities[retailer]
     print(f"\n  {retailer}:")
-    print(f"    Mean: {elasticity.mean:.3f}")
-    print(f"    95% CI: [{elasticity.ci_lower:.3f}, {elasticity.ci_upper:.3f}]")
+    print(f"    Base:  {elasticity.mean:.3f} [{elasticity.ci_lower:.3f}, {elasticity.ci_upper:.3f}]")
+    print(f"    Promo: {promo.mean:.3f} [{promo.ci_lower:.3f}, {promo.ci_upper:.3f}]")
     
     # Compare to global
-    diff = elasticity.mean - results.global_elasticity.mean
+    diff = elasticity.mean - results.global_base_elasticity.mean
     if abs(diff) < 0.1:
         print(f"    Similar to global mean")
     elif diff < 0:
@@ -137,21 +144,27 @@ print("\n" + "="*80)
 print("RETAILER COMPARISONS")
 print("="*80)
 
-# Compare BJ's vs Sam's
-comparison = results.compare_groups("BJ's", "Sam's Club")
+# Compare BJ's vs Sam's (base + promo)
+comparison_base = results.compare_groups("BJ's", "Sam's Club", elasticity_type='base')
+comparison_promo = results.compare_groups("BJ's", "Sam's Club", elasticity_type='promo')
 
-print(f"\n🔍 BJ's vs Sam's Club:")
-print(f"  Difference in elasticity: {comparison['difference_mean']:.3f}")
-print(f"  95% CI of difference: [{comparison['difference_ci'][0]:.3f}, {comparison['difference_ci'][1]:.3f}]")
-print(f"  P(BJ's MORE elastic than Sam's) = {comparison['probability']:.1%}")
+print(f"\n🔍 BJ's vs Sam's Club (BASE):")
+print(f"  Difference in elasticity: {comparison_base['difference_mean']:.3f}")
+print(f"  95% CI of difference: [{comparison_base['difference_ci'][0]:.3f}, {comparison_base['difference_ci'][1]:.3f}]")
+print(f"  P(BJ's MORE elastic than Sam's) = {comparison_base['probability']:.1%}")
 
-if comparison['probability'] > 0.95:
+print(f"\n🔍 BJ's vs Sam's Club (PROMO):")
+print(f"  Difference in elasticity: {comparison_promo['difference_mean']:.3f}")
+print(f"  95% CI of difference: [{comparison_promo['difference_ci'][0]:.3f}, {comparison_promo['difference_ci'][1]:.3f}]")
+print(f"  P(BJ's MORE elastic than Sam's) = {comparison_promo['probability']:.1%}")
+
+if comparison_base['probability'] > 0.95:
     print(f"\n  → BJ's is definitively MORE price sensitive")
-elif comparison['probability'] < 0.05:
+elif comparison_base['probability'] < 0.05:
     print(f"\n  → Sam's is definitively MORE price sensitive")
-elif comparison['probability'] > 0.8:
+elif comparison_base['probability'] > 0.8:
     print(f"\n  → BJ's is probably MORE price sensitive")
-elif comparison['probability'] < 0.2:
+elif comparison_base['probability'] < 0.2:
     print(f"\n  → Sam's is probably MORE price sensitive")
 else:
     print(f"\n  → Retailers have SIMILAR price sensitivity")
