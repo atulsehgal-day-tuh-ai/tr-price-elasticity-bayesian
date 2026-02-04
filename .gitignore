@@ -24,3 +24,7 @@ env/
 output/
 outputs/
 results/
+
+# Local data (do not commit raw retailer files)
+data/*
+!data/.gitkeep
