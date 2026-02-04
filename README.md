@@ -64,6 +64,14 @@ python run_analysis.py --config my_config.yaml
 
 See **`architecture.md`** for a detailed architecture diagram, module responsibilities, call graphs, and the end-to-end data/model/report flow.
 
+### Notebook walkthrough (recommended for first run)
+
+If you want to build confidence in the **data transformation** step-by-step before fitting models, start with:
+
+- `notebooks/01_data_transformation_exploration.ipynb`
+
+It runs `ElasticityDataPrep.transform(...)`, shows interim sanity checks (columns, distributions, missingness, retailer breakdown), makes a few quick plots, and exports a `prepared_data_from_notebook.csv` for auditing.
+
 ### Data Preparation
 
 ```python

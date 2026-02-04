@@ -15,6 +15,9 @@ dist/
 build/
 *.egg-info/
 
+# Jupyter
+.ipynb_checkpoints/
+
 # Environments
 .venv/
 venv/
