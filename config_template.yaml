@@ -30,6 +30,13 @@ data:
   # Base price estimation guardrails (used if base sales columns are missing/undefined)
   base_price_proxy_window: 8              # rolling weeks for proxy base price (if needed)
   base_price_imputed_warn_threshold: 0.30 # warn if >30% weeks required imputation
+
+  # Dependent variable rule: always model Volume Sales.
+  # If a retailer file is missing `Volume Sales`, compute it as Unit Sales × factor (constant per retailer).
+  # If neither `Volume Sales` nor a factor is available, data prep fails fast.
+  # Example: Costco sometimes arrives without `Volume Sales`, but can be derived from Unit Sales via a constant factor.
+  volume_sales_factor_by_retailer:
+    Costco: 2.0  # adjust if your Circana extract uses a different Unit→Volume relationship
   
   # Retailer-specific configurations (for missing data handling)
   retailers:

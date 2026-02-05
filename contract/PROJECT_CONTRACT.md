@@ -85,7 +85,7 @@ A modular Python system that:
 │   10. Validate output quality                                   │
 │                                                                  │
 │  OUTPUT: Model-ready DataFrame                                  │
-│    Columns: Date, Retailer, Log_Unit_Sales_SI,                 │
+│    Columns: Date, Retailer, Log_Volume_Sales_SI,               │
 │             **Log_Base_Price_SI (NEW)**,                       │
 │             **Promo_Depth_SI (NEW)**,                          │
 │             Log_Price_PL, Spring, Summer, Fall,                 │
@@ -287,11 +287,11 @@ Using **VOLUME SALES**:
 
 We prefer Volume Sales instead of Unit Sales to normalize across **pack-size heterogeneity**. Circana’s volume standardization (1 unit = 204 oz) helps ensure elasticity estimates are not biased by pack-size mix shifts over time or across retailers.
 
-> Implementation note: the current repository implementation uses `Unit Sales` as the dependent variable. If your Circana extracts include Volume Sales fields and you want full alignment with this rationale, the data prep step should be updated to use Volume Sales in pivoting/log transforms.
+> Implementation note: the repository implementation uses `Volume Sales` as the dependent variable when available. If a retailer file is missing `Volume Sales`, it can be computed as `Unit Sales × factor` (configured per retailer). If neither `Volume Sales` nor a factor is available, data prep fails fast with a clear error.
 
 **Output Format (ENHANCED):**
 ```
-Date       | Retailer | Log_Unit_Sales_SI | Log_Base_Price_SI | Promo_Depth_SI | Log_Price_PL | Spring | Summer | Fall | Week_Number
+Date       | Retailer | Log_Volume_Sales_SI | Log_Base_Price_SI | Promo_Depth_SI | Log_Price_PL | Spring | Summer | Fall | Week_Number
 -----------|----------|-------------------|-------------------|----------------|--------------|---------|---------|------|-------------
 2024-01-07 | BJ's     | 8.517             | 2.915 (NEW)       | -0.025 (NEW)   | 0.588        | 0       | 0       | 0    | 0
 2024-01-14 | BJ's     | 8.501             | 2.920 (NEW)       |  0.000 (NEW)   | 0.592        | 0       | 0       | 0    | 1
@@ -396,9 +396,10 @@ Circana reports:
 
 **Implementation Note:**
 ```python
-# Optional enhancement: if your Circana extracts include Volume Sales fields,
-# you can use Volume Sales as dependent variable to normalize pack-size mix.
-# (Current repository implementation uses Unit Sales as the dependent variable.)
+# Dependent variable rule (recommended and implemented):
+# Use Volume Sales as the dependent variable.
+# If a retailer file is missing Volume Sales, compute it as Unit Sales × factor
+# (configured per retailer, constant). If neither Volume Sales nor a factor exists, fail fast.
 # df['Log_Volume_Sales_SI'] = np.log(df['Volume_Sales_SI'])
 
 # For price calculations, use Unit Sales (consistent units)

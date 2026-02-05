@@ -215,10 +215,20 @@ def plot_seasonal_patterns(results, data, output_path: Optional[str] = None, fig
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
     
     # Plot 1: Monthly sales patterns
-    if 'Date' in data.columns and 'Unit_Sales_SI' in data.columns:
+    # Prefer Volume Sales (normalized consumption) if available; fall back to Unit Sales for backward compatibility.
+    sales_col = None
+    ylabel = None
+    if 'Volume_Sales_SI' in data.columns:
+        sales_col = 'Volume_Sales_SI'
+        ylabel = 'Average Volume Sales'
+    elif 'Unit_Sales_SI' in data.columns:
+        sales_col = 'Unit_Sales_SI'
+        ylabel = 'Average Unit Sales'
+
+    if 'Date' in data.columns and sales_col is not None:
         monthly_data = data.copy()
         monthly_data['Month'] = pd.to_datetime(monthly_data['Date']).dt.month
-        monthly_avg = monthly_data.groupby('Month')['Unit_Sales_SI'].mean()
+        monthly_avg = monthly_data.groupby('Month')[sales_col].mean()
         
         months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
         
@@ -226,7 +236,7 @@ def plot_seasonal_patterns(results, data, output_path: Optional[str] = None, fig
         ax1.set_xticks(range(1, 13))
         ax1.set_xticklabels(months, rotation=45)
         ax1.set_xlabel('Month')
-        ax1.set_ylabel('Average Unit Sales')
+        ax1.set_ylabel(ylabel)
         ax1.set_title('Monthly Sales Pattern', fontweight='bold')
         ax1.grid(alpha=0.3, axis='y')
     

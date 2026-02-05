@@ -139,7 +139,7 @@ generate_html_report(results, output_dir='./output')
 ### Input data requirement (V2)
 
 For best results in **V2 dual-elasticity mode**, your Circana CSVs should include:
-- Total sales columns: `Dollar Sales`, `Unit Sales`
+- Total sales columns: `Dollar Sales`, `Unit Sales`, `Volume Sales` (preferred dependent variable)
 - Base sales columns: `Base Dollar Sales`, `Base Unit Sales`
 
 If base sales columns are missing or undefined for some weeks, the system will **estimate/impute** a base price from observed average prices (with warnings if heavy imputation is needed).
@@ -182,7 +182,7 @@ Using **VOLUME SALES**:
 
 We prefer Volume Sales over Unit Sales to normalize across **pack-size heterogeneity**. Circana’s volume standardization (1 unit = 204 oz) helps ensure elasticity estimates aren’t biased by shifts in the pack-size mix (e.g., 24-pack → 12-pack trading).
 
-> Note: the current pipeline uses `Unit Sales` as the dependent variable. If your Circana extracts include Volume Sales fields and you want the model to use them, we can wire that in (minimal change in `data_prep.py` + docs).
+> Note: the pipeline **uses `Volume Sales` as the dependent variable** (when present). If a retailer file is missing `Volume Sales`, the pipeline can compute it as `Unit Sales × factor` (configure `volume_sales_factor_by_retailer` in your config). If neither `Volume Sales` nor a factor is available, the pipeline fails fast with a clear error.
 
 ### Command Line
 
@@ -202,12 +202,11 @@ See **`architecture.md`** for a detailed architecture diagram, module responsibi
 
 ### Business / stakeholder guides (recommended for non-technical audiences)
 
-The `help_documents/` folder contains short, business-friendly narratives that explain *what we’re doing and why*, using the same assumptions as the code:
+The `help_documents/` folder contains the primary narrative guides for this work:
 
-- **`help_documents/Sparkling_Ice_Analytics_Plan_Business_Guide.md`**: End-to-end “analytics plan” story (Bayesian vs classical, MCMC, why compute matters, dual elasticities, seasonality/holidays, hierarchical pooling, and which business questions we answer).
-- **`help_documents/Business_Stakeholder_Modeling_Plan.md`**: A concise modeling plan explaining why we use Bayesian + MCMC, why two elasticities, why brand-level is acceptable, and why hierarchical models.
-- **`help_documents/Recommendation_Separate_Base_Promo_Elasticity.md`**: Rationale for separating **base price elasticity** from **promotional elasticity** (strategic vs tactical decisions).
-- **`help_documents/Business_Stakeholder_Briefing_Portfolio_Seasonality.md`**: Why brand-level elasticity remains reliable even as portfolio evolves (seasonality dominates; model controls isolate price effects).
+- **`help_documents/Sparkling_Ice_Analytics_Plan_Business_Guide.md`**: The business-friendly end-to-end story (Bayesian vs classical, MCMC, why compute matters, dual elasticities, seasonality/holidays, hierarchical pooling, and which questions we answer).
+- **`help_documents/Sparkling_Ice_Analytics_Plan_Techno_Functional_Guide.md`**: A combined business + technical guide (model/data contracts, raw columns used, engineered features, conceptual equations, implementation pointers).
+- **`help_documents/Azure_VM_Cursor_MCMC_Setup_Guide.md`**: How to run the project on a VM via Cursor/SSH (kept separate from the modeling narrative).
 
 ### Notebook walkthrough (recommended for first run)
 
@@ -261,11 +260,16 @@ df = prep.add_custom_feature(
 
 ```python
 prep = ElasticityDataPrep(
-    retailers={
-        'BJs': {'has_promo': True, 'has_competitor': True},
-        'Sams': {'has_promo': True, 'has_competitor': True},
-        'Costco': {'has_promo': False, 'has_competitor': True}  # Missing promo!
-    }
+    PrepConfig(
+        retailers={
+            'BJs': {'has_promo': True, 'has_competitor': True},
+            'Sams': {'has_promo': True, 'has_competitor': True},
+            'Costco': {'has_promo': False, 'has_competitor': True}  # Missing promo!
+        },
+        # If Costco (or another retailer) is missing `Volume Sales`, provide a constant factor
+        # so data prep can compute: Volume Sales = Unit Sales × factor.
+        volume_sales_factor_by_retailer={'Costco': 2.0}
+    )
 )
 
 df = prep.transform('bjs.csv', 'sams.csv', 'costco.csv')
@@ -335,9 +339,7 @@ price_elasticity_bayesian/
 │   └── 01_data_transformation_exploration.ipynb
 ├── help_documents/
 │   ├── Sparkling_Ice_Analytics_Plan_Business_Guide.md
-│   ├── Business_Stakeholder_Modeling_Plan.md
-│   ├── Recommendation_Separate_Base_Promo_Elasticity.md
-│   ├── Business_Stakeholder_Briefing_Portfolio_Seasonality.md
+│   ├── Sparkling_Ice_Analytics_Plan_Techno_Functional_Guide.md
 │   └── Azure_VM_Cursor_MCMC_Setup_Guide.md
 ├── scripts/
 │   ├── setup_venv_py312_windows.ps1

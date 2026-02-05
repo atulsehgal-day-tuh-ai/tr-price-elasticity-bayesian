@@ -184,14 +184,14 @@ NOTE:
 
     correlations = df_clean[
         [
-            "Log_Unit_Sales_SI",
+            "Log_Volume_Sales_SI",
             "Log_Price_SI",
             "Log_Price_SI_lag1",
             "Log_Price_SI_lag4",
             "Price_Gap",
             "Price_Index",
         ]
-    ].corr()["Log_Unit_Sales_SI"].sort_values(ascending=False)
+    ].corr()["Log_Volume_Sales_SI"].sort_values(ascending=False)
 
     print("\nCorrelations with Log Sales:")
     print(correlations)

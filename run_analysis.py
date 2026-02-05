@@ -86,6 +86,54 @@ def _get_output_dir(config: dict, default: str = './output') -> str:
     return default
 
 
+def _get_volume_sales_factor_by_retailer(config: dict) -> dict:
+    """
+    Return mapping used to compute Volume Sales from Unit Sales when Volume Sales is missing.
+
+    Supports:
+    - Preferred: config['data']['volume_sales_factor_by_retailer']
+    - Legacy/flat: config['volume_sales_factor_by_retailer']
+    """
+    if not isinstance(config, dict):
+        return {}
+    data = config.get('data')
+    if isinstance(data, dict) and isinstance(data.get('volume_sales_factor_by_retailer'), dict):
+        return data.get('volume_sales_factor_by_retailer') or {}
+    if isinstance(config.get('volume_sales_factor_by_retailer'), dict):
+        return config.get('volume_sales_factor_by_retailer') or {}
+    return {}
+
+
+def _parse_volume_sales_factors(items) -> dict:
+    """
+    Parse repeatable CLI args like:
+      --volume-sales-factor Costco=2.0 --volume-sales-factor "BJ's=1.0"
+    """
+    if not items:
+        return {}
+    out = {}
+    for raw in items:
+        if raw is None:
+            continue
+        s = str(raw).strip()
+        if not s:
+            continue
+        if "=" not in s:
+            raise ValueError(f"Invalid --volume-sales-factor '{raw}'. Expected format Retailer=FACTOR, e.g. Costco=2.0")
+        retailer, factor = s.split("=", 1)
+        retailer = retailer.strip()
+        factor = factor.strip()
+        if not retailer:
+            raise ValueError(f"Invalid --volume-sales-factor '{raw}'. Retailer name is empty.")
+        try:
+            out[retailer] = float(factor)
+        except ValueError as e:
+            raise ValueError(
+                f"Invalid --volume-sales-factor '{raw}'. FACTOR must be numeric (e.g. Costco=2.0)"
+            ) from e
+    return out
+
+
 # ============================================================================
 # CONFIGURATION LOADING
 # ============================================================================
@@ -148,6 +196,16 @@ Examples:
     parser.add_argument('--retailer-filter', type=str, default='All',
                        choices=['Overall', 'All', 'BJs', 'Sams', 'Costco'],
                        help='Retailer filter (default: All)')
+
+    parser.add_argument(
+        '--volume-sales-factor',
+        action='append',
+        default=None,
+        help=(
+            "Retailer-to-factor mapping used to compute missing 'Volume Sales' as Unit Sales × factor. "
+            "Repeatable. Format: Retailer=FACTOR (e.g. --volume-sales-factor Costco=2.0)."
+        )
+    )
 
     # V2: Dual elasticity options (default-on)
     parser.add_argument('--dual-elasticity', action='store_true',
@@ -212,6 +270,7 @@ def run_pipeline(config: dict, logger):
         include_seasonality=config['data']['include_seasonality'],
         include_promotions=config['data']['include_promotions'],
         include_time_trend=config['data']['include_time_trend'],
+        volume_sales_factor_by_retailer=_get_volume_sales_factor_by_retailer(config),
         separate_base_promo=config['data'].get('separate_base_promo', True),
         log_transform_sales=config['data']['log_transform_sales'],
         log_transform_prices=config['data']['log_transform_prices'],
@@ -454,6 +513,7 @@ def main():
                 'include_seasonality': True,
                 'include_promotions': True,
                 'include_time_trend': True,
+                'volume_sales_factor_by_retailer': _parse_volume_sales_factors(args.volume_sales_factor),
                 'separate_base_promo': (not args.no_dual_elasticity),
                 'log_transform_sales': True,
                 'log_transform_prices': True,

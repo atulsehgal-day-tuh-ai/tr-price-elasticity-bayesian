@@ -38,6 +38,11 @@ class PrepConfig:
     include_seasonality: bool = True
     include_promotions: bool = True
     include_time_trend: bool = True
+    # Dependent variable rule:
+    # Always model Volume Sales (normalized consumption quantity). If Volume Sales
+    # is missing for a retailer, compute as Unit Sales × factor (per retailer).
+    # If factor is missing, fail fast with a clear error.
+    volume_sales_factor_by_retailer: Dict[str, float] = field(default_factory=dict)
     # V2: Separate base (strategic) vs promotional (tactical) price effects
     separate_base_promo: bool = True
     log_transform_sales: bool = True
@@ -227,6 +232,56 @@ class ElasticityDataPrep:
         # Prices
         df['Avg_Price'] = df['Dollar Sales'] / df['Unit Sales']
 
+        # Volume Sales (dependent variable input)
+        # Circana may provide 'Volume Sales'. If missing for a retailer/file, we can compute it from Unit Sales × factor.
+        volume_col = 'Volume Sales'
+        if volume_col not in df.columns:
+            df[volume_col] = np.nan
+
+        # Fill missing volume sales per retailer using configured factors (strict rule)
+        missing_volume_mask = df[volume_col].isna()
+        if missing_volume_mask.any():
+            if 'Retailer' not in df.columns:
+                raise ValueError(
+                    "Volume Sales is missing and no Retailer column is present to apply a volume-sales factor. "
+                    "Provide 'Volume Sales' in the extract or include a Retailer column + volume_sales_factor_by_retailer config."
+                )
+
+            def _norm(s: str) -> str:
+                return (
+                    str(s)
+                    .lower()
+                    .replace("'", "")
+                    .replace("’", "")
+                    .replace(".", "")
+                    .replace("-", " ")
+                    .replace("&", "and")
+                    .strip()
+                )
+
+            factors_by_norm = {_norm(k): float(v) for k, v in (self.config.volume_sales_factor_by_retailer or {}).items()}
+
+            for retailer in df.loc[missing_volume_mask, 'Retailer'].dropna().unique().tolist():
+                factor = factors_by_norm.get(_norm(retailer))
+                if factor is None:
+                    raise ValueError(
+                        f"Missing '{volume_col}' for retailer '{retailer}', and no factor was provided in "
+                        "PrepConfig.volume_sales_factor_by_retailer.\n\n"
+                        "Fix options:\n"
+                        "  1) Include 'Volume Sales' in the Circana extract, or\n"
+                        f"  2) Provide a constant factor for this retailer, e.g. volume_sales_factor_by_retailer: {{'{retailer}': 2.0}}"
+                    )
+                rmask = (df['Retailer'] == retailer) & missing_volume_mask
+                df.loc[rmask, volume_col] = df.loc[rmask, 'Unit Sales'] * factor
+
+            # Final strict check
+            if df[volume_col].isna().any():
+                missing_retailers = df.loc[df[volume_col].isna(), 'Retailer'].dropna().unique().tolist()
+                raise ValueError(
+                    f"'{volume_col}' is still missing after applying factors for retailers: {missing_retailers}. "
+                    "Provide 'Volume Sales' in the extract or add missing factors in volume_sales_factor_by_retailer."
+                )
+
         # V2: Base price columns (if available)
         # Circana often provides Base Dollar Sales / Base Unit Sales (everyday/base sales).
         base_dollars_col = 'Base Dollar Sales'
@@ -252,7 +307,8 @@ class ElasticityDataPrep:
                 df['Promo_Intensity'] = 0.0
         
         # Drop missing
-        df = df.dropna(subset=['Dollar Sales', 'Unit Sales', 'Avg_Price'])
+        df[volume_col] = df[volume_col].where(df[volume_col] > 0)  # guard against zero/negative
+        df = df.dropna(subset=['Dollar Sales', 'Unit Sales', volume_col, 'Avg_Price'])
         
         return df
     
@@ -275,7 +331,7 @@ class ElasticityDataPrep:
         
         # Logs
         if self.config.log_transform_sales:
-            df_wide['Log_Unit_Sales_SI'] = np.log(df_wide['Unit_Sales_SI'])
+            df_wide['Log_Volume_Sales_SI'] = np.log(df_wide['Volume_Sales_SI'])
         
         if self.config.log_transform_prices:
             df_wide['Log_Price_SI'] = np.log(df_wide['Price_SI'])
@@ -289,9 +345,9 @@ class ElasticityDataPrep:
         # Only require outcome and base/own price. Cross-price and promo may be missing for some retailers
         # and should be handled by model masking (via has_competitor/has_promo indicators).
         if self.config.separate_base_promo:
-            df_wide = df_wide.dropna(subset=['Log_Unit_Sales_SI', 'Log_Base_Price_SI'])
+            df_wide = df_wide.dropna(subset=['Log_Volume_Sales_SI', 'Log_Base_Price_SI'])
         else:
-            df_wide = df_wide.dropna(subset=['Log_Unit_Sales_SI', 'Log_Price_SI'])
+            df_wide = df_wide.dropna(subset=['Log_Volume_Sales_SI', 'Log_Price_SI'])
         
         # Missing features
         if self.config.retailers:
@@ -308,7 +364,7 @@ class ElasticityDataPrep:
         sales = df.pivot_table(
             index=index_cols,
             columns='Product_Short',
-            values='Unit Sales',
+            values='Volume Sales',
             aggfunc='sum'
         ).reset_index()
         
@@ -337,8 +393,8 @@ class ElasticityDataPrep:
         
         # Rename
         wide = wide.rename(columns={
-            'Sparkling Ice_sales': 'Unit_Sales_SI',
-            'Private Label_sales': 'Unit_Sales_PL',
+            'Sparkling Ice_sales': 'Volume_Sales_SI',
+            'Private Label_sales': 'Volume_Sales_PL',
             'Sparkling Ice_price': 'Price_SI',
             'Private Label_price': 'Price_PL'
         })
@@ -548,7 +604,7 @@ class ElasticityDataPrep:
     def _validate_output(self, df: pd.DataFrame):
         """Validate output"""
         
-        required = ['Date', 'Log_Unit_Sales_SI']
+        required = ['Date', 'Log_Volume_Sales_SI']
 
         # V2 vs V1 price features
         if self.config.separate_base_promo:

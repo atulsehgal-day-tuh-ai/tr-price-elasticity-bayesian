@@ -690,7 +690,7 @@ class SimpleBayesianModel:
         """Build PyMC model"""
         
         # Extract data
-        y = data['Log_Unit_Sales_SI'].values
+        y = data['Log_Volume_Sales_SI'].values
         use_dual = ('Log_Base_Price_SI' in data.columns) and ('Promo_Depth_SI' in data.columns)
         X_base = data['Log_Base_Price_SI'].values if use_dual else data['Log_Price_SI'].values
         X_cross = data['Log_Price_PL'].values
@@ -898,7 +898,7 @@ class HierarchicalBayesianModel:
         """Build hierarchical PyMC model"""
         
         # Extract data
-        y = data['Log_Unit_Sales_SI'].values
+        y = data['Log_Volume_Sales_SI'].values
         use_dual = ('Log_Base_Price_SI' in data.columns) and ('Promo_Depth_SI' in data.columns)
         X_base = data['Log_Base_Price_SI'].values if use_dual else data['Log_Price_SI'].values
         X_cross = data['Log_Price_PL'].values

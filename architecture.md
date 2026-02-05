@@ -37,7 +37,10 @@ Given weekly **Circana** CSV exports for one or more retailers (e.g., BJ’s, Sa
 - `README.md`: quickstart + examples
 - `contract/PROJECT_CONTRACT.md`: detailed blueprint/spec, deliverables, validation plan
 - `architecture.md` (this file): “how everything connects”
-- `help_documents/`: business-facing guides (analytics plan, base vs promo rationale, seasonality brief, VM setup)
+- `help_documents/`: narrative guides and operational runbooks
+  - `Sparkling_Ice_Analytics_Plan_Business_Guide.md`: business story and decision framing
+  - `Sparkling_Ice_Analytics_Plan_Techno_Functional_Guide.md`: combined business + technical deep dive (data contract, model form, implementation pointers)
+  - `Azure_VM_Cursor_MCMC_Setup_Guide.md`: VM setup and running guidance
 
 **Scripts / automation**
 
@@ -236,9 +239,9 @@ If your Circana extracts include base-sales fields, the pipeline can compute a c
 Common columns:
 
 - `Date` (weekly date)
-- `Unit_Sales_SI`, `Unit_Sales_PL`
+- `Volume_Sales_SI`, `Volume_Sales_PL` (normalized quantity; dependent variable uses Sparkling Ice volume)
 - `Price_SI`, `Price_PL`
-- `Log_Unit_Sales_SI`
+- `Log_Volume_Sales_SI`
 - `Log_Price_SI`, `Log_Price_PL`
 - `Promo_Depth_SI` (preferred when base sales fields are present and `separate_base_promo=True`)
 - `Promo_Intensity_SI` (fallback when base sales fields are not available)
