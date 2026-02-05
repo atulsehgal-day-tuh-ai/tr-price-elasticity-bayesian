@@ -57,6 +57,46 @@ For best results in **V2 dual-elasticity mode**, your Circana CSVs should includ
 
 If base sales columns are missing or undefined for some weeks, the system will **estimate/impute** a base price from observed average prices (with warnings if heavy imputation is needed).
 
+### Why we prefer “Volume Sales” over “Unit Sales” (when available)
+
+#### Simple explanation
+
+**What is Volume Sales?**  
+Volume Sales measures actual consumption volume in standardized units. Circana defines **1 volume unit = 204 fluid ounces** (a 12-pack). This lets us compare across pack sizes fairly:
+
+- A 12-pack = 1 volume unit
+- A 24-pack = 2 volume units
+
+So selling 100 small packs can equal selling 50 large packs — same consumption volume.
+
+#### Why this matters for price elasticity
+
+If consumers “trade down” to smaller packs when prices rise, **Unit Sales can stay flat** even though **consumption volume falls**. Elasticity computed on Unit Sales can be biased toward “less elastic” simply because pack mix shifted.
+
+Example (two weeks):
+
+Week 1: Price = $18  
+- Sales mix: 80% twenty-four-packs + 20% twelve-packs  
+- Unit Sales: 1,000 units  
+- Volume Sales: (800 × 2) + (200 × 1) = 1,800  
+
+Week 2: Price = $20  
+- Sales mix: 20% twenty-four-packs + 80% twelve-packs  
+- Unit Sales: 1,000 units  
+- Volume Sales: (200 × 2) + (800 × 1) = 1,200  
+
+Using **UNIT SALES**:
+- Price up ~11%, units flat → conclusion: perfectly inelastic (**wrong**)
+
+Using **VOLUME SALES**:
+- Price up ~11%, volume down ~33% → conclusion: highly elastic (**more correct**)
+
+#### For technical audiences
+
+We prefer Volume Sales over Unit Sales to normalize across **pack-size heterogeneity**. Circana’s volume standardization (1 unit = 204 oz) helps ensure elasticity estimates aren’t biased by shifts in the pack-size mix (e.g., 24-pack → 12-pack trading).
+
+> Note: the current pipeline uses `Unit Sales` as the dependent variable. If your Circana extracts include Volume Sales fields and you want the model to use them, we can wire that in (minimal change in `data_prep.py` + docs).
+
 ### Command Line
 
 ```bash
