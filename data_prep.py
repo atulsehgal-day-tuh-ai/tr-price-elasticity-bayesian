@@ -49,6 +49,9 @@ class PrepConfig:
         'Total Sparkling Ice Core Brand',
         'PRIVATE LABEL-BOTTLED WATER-SELTZER/SPARKLING/MINERAL WATER'
     ])
+    # If exact `brand_filters` don't match the file's Product labels, fall back to
+    # conservative substring-based matching (e.g., Product contains "sparkling ice").
+    enable_brand_fuzzy_match: bool = True
     retailers: Optional[Dict] = None
     verbose: bool = True
 
@@ -153,8 +156,9 @@ class ElasticityDataPrep:
         """Clean and filter data"""
         
         df = df.copy()
+        df_all = df.copy()
         
-        # Filter to brands
+        # Filter to brands (exact match first)
         df = df[df['Product'].isin(self.config.brand_filters)]
         
         # Retailer filter
@@ -165,32 +169,53 @@ class ElasticityDataPrep:
         elif self.config.retailer_filter == 'Costco':
             df = df[df['Retailer'] == "Costco"]
         
-        # Product names
+        # Product names (exact map first)
         product_map = {
             'Total Sparkling Ice Core Brand': 'Sparkling Ice',
             'PRIVATE LABEL-BOTTLED WATER-SELTZER/SPARKLING/MINERAL WATER': 'Private Label'
         }
         df['Product_Short'] = df['Product'].map(product_map)
 
-        # Validate we can identify Sparkling Ice rows (required for dependent variable)
-        if df['Product_Short'].isna().all():
-            sample_products = df['Product'].dropna().astype(str).unique().tolist()[:15]
-            raise ValueError(
-                "No rows matched expected product names for Sparkling Ice / Private Label.\n"
-                "Expected one of:\n"
-                f"  - {self.config.brand_filters}\n\n"
-                "Sample Product values seen in the file:\n"
-                f"  - {sample_products}\n\n"
-                "Fix: update PrepConfig.brand_filters to match your Circana 'Product' values."
-            )
+        def _infer_product_short(product: str) -> Optional[str]:
+            s = str(product).lower()
+            if 'sparkling ice' in s:
+                return 'Sparkling Ice'
+            if 'private label' in s:
+                return 'Private Label'
+            return None
 
-        if 'Sparkling Ice' not in set(df['Product_Short'].dropna().unique()):
-            sample_products = df['Product'].dropna().astype(str).unique().tolist()[:15]
+        def _apply_retailer_filter(df_in: pd.DataFrame) -> pd.DataFrame:
+            if self.config.retailer_filter == 'BJs':
+                return df_in[df_in['Retailer'] == "BJ's"]
+            if self.config.retailer_filter == 'Sams':
+                return df_in[df_in['Retailer'] == "Sam's Club"]
+            if self.config.retailer_filter == 'Costco':
+                return df_in[df_in['Retailer'] == "Costco"]
+            return df_in
+
+        # If exact matching didn't produce Sparkling Ice, fall back to fuzzy matching
+        if df.empty or ('Sparkling Ice' not in set(df['Product_Short'].dropna().unique())):
+            if self.config.enable_brand_fuzzy_match:
+                self.logger.warning(
+                    "  ⚠️ Sparkling Ice not found using exact brand_filters; attempting fuzzy Product matching."
+                )
+                df2 = _apply_retailer_filter(df_all.copy())
+                df2['Product_Short'] = df2['Product'].map(product_map)
+                df2['Product_Short'] = df2['Product_Short'].fillna(df2['Product'].map(_infer_product_short))
+                df2 = df2[df2['Product_Short'].isin(['Sparkling Ice', 'Private Label'])]
+                df = df2
+
+        # Final validation: must have Sparkling Ice
+        if df.empty or ('Sparkling Ice' not in set(df['Product_Short'].dropna().unique())):
+            sample_products = df_all['Product'].dropna().astype(str).unique().tolist()[:25]
             raise ValueError(
                 "Sparkling Ice rows were not found after filtering/mapping, so the model target cannot be built.\n"
+                "Expected Product to include something like 'Sparkling Ice' (or update brand_filters).\n\n"
                 "Sample Product values seen in the file:\n"
                 f"  - {sample_products}\n\n"
-                "Fix: update PrepConfig.brand_filters to match your Circana 'Product' values."
+                "Fix options:\n"
+                "  1) Update PrepConfig.brand_filters to match your Circana 'Product' values\n"
+                "  2) Keep enable_brand_fuzzy_match=True and ensure the Product string contains 'sparkling ice'\n"
             )
         
         # Dates
