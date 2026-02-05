@@ -14,6 +14,14 @@ Use this when:
 - Getting started with the system
 """
 
+import sys
+from pathlib import Path
+
+# Allow running this file directly: `python examples/example_01_simple.py`
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from data_prep import ElasticityDataPrep, PrepConfig
 from bayesian_models import SimpleBayesianModel
 from visualizations import generate_html_report
