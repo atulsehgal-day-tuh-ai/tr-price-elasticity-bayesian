@@ -1338,7 +1338,7 @@ For questions about:
 **Date:** February 4, 2026  
 **Version:** 2.0.0 (Enhanced with Base Price & Promotional Elasticity Separation)  
 **Delivered by:** Claude (Anthropic)  
-**For:** Atul - Director of Data Science, Swire Coca-Cola
+**For:** Atul Sehgal
 
 ---
 
