@@ -30,6 +30,26 @@ A complete, production-ready system for Bayesian price elasticity analysis with 
 pip install -r requirements.txt
 ```
 
+### Python 3.12 (recommended) + virtual environment
+
+This project is easiest to run in a dedicated venv using **Python 3.12.x**.
+
+- **Windows (PowerShell)**:
+
+```powershell
+.\scripts\setup_venv_py312_windows.ps1
+.\venv312\Scripts\Activate.ps1
+python --version
+```
+
+- **Linux (e.g., Azure VM)**:
+
+```bash
+bash ./scripts/setup_venv_py312_linux.sh
+source ./venv312/bin/activate
+python --version
+```
+
 ### Cloud setup (Cursor + GitHub Codespaces) — 16 cores / 64 GB RAM
 
 This repo supports running in GitHub Codespaces (and connecting from Cursor) via a Dev Container.

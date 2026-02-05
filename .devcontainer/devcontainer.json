@@ -1,6 +1,6 @@
 {
   "name": "Bayesian Price Elasticity Analysis",
-  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
   "postCreateCommand": "sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential g++ && python -m pip install --upgrade pip && pip install -r requirements.txt",
   "customizations": {
     "vscode": {

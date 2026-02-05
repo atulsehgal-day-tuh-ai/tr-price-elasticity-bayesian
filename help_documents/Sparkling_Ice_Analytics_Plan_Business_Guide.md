@@ -1,8 +1,7 @@
 # Sparkling Ice Price Elasticity Analysis
 ## A Business Guide to Our Analytics Approach
 
-**Prepared for:** Swire Coca-Cola Commercial & Pricing Leadership  
-**Prepared by:** Atul Sehgal, Director of Data Science  
+**Prepared for:** Commercial & Pricing Leadership  
 **Date:** February 5, 2026  
 **Version:** 2.0  
 
@@ -286,7 +285,7 @@ The short answer is no — and here's why brand-level analysis is actually *bett
 
 ### Strategic Pricing Decisions Happen at the Brand Level
 
-When Swire Coca-Cola negotiates pricing with BJ's or Sam's Club, the conversation is about the Sparkling Ice *brand* — not about Black Raspberry vs. Lemon Lime. Price changes at retail are typically applied across the portfolio: a cost increase flows through to all SKUs, and a promotional event features the brand, not individual flavors. The elasticity that matters for these decisions is the *brand-level* elasticity: how does total Sparkling Ice volume respond when the average Sparkling Ice price changes?
+When the organization negotiates pricing with BJ's or Sam's Club, the conversation is about the Sparkling Ice *brand* — not about Black Raspberry vs. Lemon Lime. Price changes at retail are typically applied across the portfolio: a cost increase flows through to all SKUs, and a promotional event features the brand, not individual flavors. The elasticity that matters for these decisions is the *brand-level* elasticity: how does total Sparkling Ice volume respond when the average Sparkling Ice price changes?
 
 Modeling at the UPC level would give us flavor-level estimates, but these aren't actionable at the level where pricing decisions are made. Worse, the flavor-level estimates would be much noisier — each individual SKU has less data, more volatility from distribution changes and flavor rotations, and more sensitivity to random week-to-week variation.
 
@@ -528,5 +527,4 @@ The result is a system that doesn't just tell you "elasticity is −1.85" — it
 ---
 
 **Document Version:** 2.0  
-**Analysis System:** Bayesian Price Elasticity Analysis System v2.0  
-**Contact:** Atul Sehgal
+**Analysis System:** Bayesian Price Elasticity Analysis System v2.0

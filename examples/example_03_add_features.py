@@ -25,323 +25,197 @@ if str(REPO_ROOT) not in sys.path:
 
 from data_prep import ElasticityDataPrep, PrepConfig
 from bayesian_models import SimpleBayesianModel
-from visualizations import generate_html_report
 import pandas as pd
 import numpy as np
 
-# ============================================================================
-# STEP 1: BASIC DATA PREPARATION
-# ============================================================================
+def main():
+    # ============================================================================
+    # STEP 1: BASIC DATA PREPARATION
+    # ============================================================================
 
-print("="*80)
-print("EXAMPLE 3: CUSTOM FEATURE ENGINEERING")
-print("="*80)
+    print("=" * 80)
+    print("EXAMPLE 3: CUSTOM FEATURE ENGINEERING")
+    print("=" * 80)
 
-# Prepare data normally first
-prep_config = PrepConfig(
-    retailer_filter='Overall',
-    include_seasonality=True,
-    include_promotions=True,
-    verbose=True
-)
+    prep = ElasticityDataPrep(
+        PrepConfig(
+            retailer_filter="Overall",
+            include_seasonality=True,
+            include_promotions=True,
+            verbose=True,
+        )
+    )
 
-prep = ElasticityDataPrep(prep_config)
+    DATA_DIR = REPO_ROOT / "data"
+    bjs_csv = DATA_DIR / "bjs.csv"
+    sams_csv = DATA_DIR / "sams.csv"
 
-# NOTE: Update paths to your actual data
-df = prep.transform(
-    bjs_path='path/to/bjs.csv',
-    sams_path='path/to/sams.csv'
-)
+    if not bjs_csv.exists() or not sams_csv.exists():
+        raise FileNotFoundError(
+            "Missing input CSV(s). Expected files:\n"
+            f"  - {bjs_csv}\n"
+            f"  - {sams_csv}\n\n"
+            "Place your Circana files in the repo's data/ folder (see README.md)."
+        )
 
-print(f"\nBasic data prepared: {len(df)} observations")
-print(f"Columns: {df.columns.tolist()}")
+    df = prep.transform(bjs_path=str(bjs_csv), sams_path=str(sams_csv))
 
-# ============================================================================
-# STEP 2: ADD INTERACTION TERMS
-# ============================================================================
+    print(f"\nBasic data prepared: {len(df)} observations")
 
-print("\n" + "="*80)
-print("ADDING INTERACTION TERMS")
-print("="*80)
+    # ============================================================================
+    # STEP 2: ADD INTERACTION TERMS
+    # ============================================================================
 
-# Test if price elasticity differs by season
-# Interaction: price × spring
-df = prep.add_interaction_term(
-    df,
-    var1='Log_Price_SI',
-    var2='Spring',
-    name='Price_x_Spring'
-)
+    print("\n" + "=" * 80)
+    print("ADDING INTERACTION TERMS")
+    print("=" * 80)
 
-print(f"\n✓ Added Price_x_Spring interaction")
-print(f"  This tests: Does price sensitivity differ in Spring?")
+    df = prep.add_interaction_term(df, var1="Log_Price_SI", var2="Spring", name="Price_x_Spring")
+    df = prep.add_interaction_term(df, var1="Log_Price_SI", var2="Summer", name="Price_x_Summer")
 
-# Can add more interactions
-df = prep.add_interaction_term(
-    df,
-    var1='Log_Price_SI',
-    var2='Summer',
-    name='Price_x_Summer'
-)
+    print("\n✓ Added interaction terms:")
+    print("  - Price_x_Spring (tests Spring-specific price sensitivity)")
+    print("  - Price_x_Summer (tests Summer-specific price sensitivity)")
 
-print(f"✓ Added Price_x_Summer interaction")
+    # ============================================================================
+    # STEP 3: ADD LAGGED FEATURES
+    # ============================================================================
 
-# ============================================================================
-# STEP 3: ADD LAGGED FEATURES
-# ============================================================================
+    print("\n" + "=" * 80)
+    print("ADDING LAGGED FEATURES")
+    print("=" * 80)
 
-print("\n" + "="*80)
-print("ADDING LAGGED FEATURES")
-print("="*80)
+    df = prep.add_lagged_feature(df, var="Log_Price_SI", lags=[1, 4], group_by=None)
 
-# Add lagged prices to test momentum/carryover effects
-df = prep.add_lagged_feature(
-    df,
-    var='Log_Price_SI',
-    lags=[1, 4],  # 1-week and 4-week lags
-    group_by=None
-)
+    print("\n✓ Added lagged prices:")
+    print("  - Log_Price_SI_lag1 (last week's price)")
+    print("  - Log_Price_SI_lag4 (4 weeks ago price)")
 
-print(f"\n✓ Added lagged prices:")
-print(f"  - Log_Price_SI_lag1 (last week's price)")
-print(f"  - Log_Price_SI_lag4 (4 weeks ago price)")
-print(f"  This tests: Do past prices affect current sales?")
+    # ============================================================================
+    # STEP 4: ADD MOVING AVERAGES
+    # ============================================================================
 
-# ============================================================================
-# STEP 4: ADD MOVING AVERAGES
-# ============================================================================
+    print("\n" + "=" * 80)
+    print("ADDING MOVING AVERAGES")
+    print("=" * 80)
 
-print("\n" + "="*80)
-print("ADDING MOVING AVERAGES")
-print("="*80)
+    df = prep.add_moving_average(df, var="Price_SI", windows=[4, 8], group_by=None)
 
-# Add moving average for reference price effect
-df = prep.add_moving_average(
-    df,
-    var='Price_SI',  # Use actual price (not log)
-    windows=[4, 8],  # 4-week and 8-week moving average
-    group_by=None
-)
+    print("\n✓ Added moving averages:")
+    print("  - Price_SI_ma4 (4-week average price)")
+    print("  - Price_SI_ma8 (8-week average price)")
 
-print(f"\n✓ Added moving averages:")
-print(f"  - Price_SI_ma4 (4-week average price)")
-print(f"  - Price_SI_ma8 (8-week average price)")
-print(f"  This enables: Reference price effects (current vs average)")
+    # ============================================================================
+    # STEP 5: ADD CUSTOM FEATURES
+    # ============================================================================
 
-# ============================================================================
-# STEP 5: ADD CUSTOM FEATURES
-# ============================================================================
+    print("\n" + "=" * 80)
+    print("ADDING CUSTOM FEATURES")
+    print("=" * 80)
 
-print("\n" + "="*80)
-print("ADDING CUSTOM FEATURES")
-print("="*80)
+    df = prep.add_custom_feature(df, name="Price_Gap", formula=lambda d: d["Price_SI"] - d["Price_PL"])
+    df = prep.add_custom_feature(df, name="Price_Index", formula=lambda d: d["Price_SI"] / d["Price_SI_ma4"])
 
-# Create price gap (SI price - PL price)
-df = prep.add_custom_feature(
-    df,
-    name='Price_Gap',
-    formula=lambda d: d['Price_SI'] - d['Price_PL']
-)
+    df = prep.add_custom_feature(
+        df,
+        name="Log_Price_Gap",
+        formula=lambda d: pd.Series(
+            [0 if g <= 0 else np.log(g) for g in d["Price_Gap"]],
+            index=d.index,
+        ),
+    )
 
-print(f"\n✓ Added Price_Gap feature")
-print(f"  = SI Price - PL Price")
-print(f"  This tests: Does price differential matter?")
+    print("\n✓ Added custom features:")
+    print("  - Price_Gap = Price_SI - Price_PL")
+    print("  - Price_Index = Price_SI / Price_SI_ma4")
+    print("  - Log_Price_Gap = log(max(Price_Gap, 0))")
 
-# Create price index (current price / 4-week average)
-df = prep.add_custom_feature(
-    df,
-    name='Price_Index',
-    formula=lambda d: d['Price_SI'] / d['Price_SI_ma4']
-)
+    # ============================================================================
+    # STEP 6: INSPECT NEW FEATURES
+    # ============================================================================
 
-print(f"✓ Added Price_Index feature")
-print(f"  = Current Price / 4-week Average")
-print(f"  This tests: Reference price effects")
+    print("\n" + "=" * 80)
+    print("INSPECTING NEW FEATURES")
+    print("=" * 80)
 
-# Create log of price gap
-df = prep.add_custom_feature(
-    df,
-    name='Log_Price_Gap',
-    formula=lambda d: pd.Series([
-        0 if g <= 0 else np.log(g)
-        for g in d['Price_Gap']
-    ], index=d.index)
-)
+    feature_cols = [
+        "Date",
+        "Log_Price_SI",
+        "Price_x_Spring",
+        "Log_Price_SI_lag1",
+        "Price_SI_ma4",
+        "Price_Gap",
+        "Price_Index",
+    ]
+    print("\nSample of enhanced data:")
+    print(df[feature_cols].head(10))
 
-print(f"✓ Added Log_Price_Gap feature")
+    # ============================================================================
+    # STEP 7: FIT MODEL (BASELINE) + NOTE ON EXTENDING FEATURES
+    # ============================================================================
 
-# ============================================================================
-# STEP 6: INSPECT NEW FEATURES
-# ============================================================================
+    print("\n" + "=" * 80)
+    print("FITTING MODEL WITH CUSTOM FEATURES (BASELINE RUN)")
+    print("=" * 80)
 
-print("\n" + "="*80)
-print("INSPECTING NEW FEATURES")
-print("="*80)
+    print(
+        """
+NOTE:
+- The current SimpleBayesianModel uses a fixed set of core features.
+- You CAN still engineer features (as above) for exploration and correlation checks.
+- To include custom features in the PyMC model, you’d extend bayesian_models.py to add coefficients and terms in the linear predictor.
+"""
+    )
 
-# Show sample of data with new features
-print(f"\nSample of enhanced data:")
-feature_cols = [
-    'Date', 'Log_Price_SI', 'Price_x_Spring', 
-    'Log_Price_SI_lag1', 'Price_SI_ma4', 'Price_Gap'
-]
-print(df[feature_cols].head(10))
+    # Drop rows with NaN (from lagging) before fitting
+    df_clean = df.dropna()
+    print(f"After dropping NaN from lags: {len(df_clean)} rows")
 
-# Summary statistics
-print(f"\nSummary of new features:")
-new_features = [
-    'Price_x_Spring', 'Log_Price_SI_lag1', 
-    'Log_Price_SI_lag4', 'Price_SI_ma4', 'Price_Gap'
-]
-print(df[new_features].describe())
+    model = SimpleBayesianModel(priors="default", n_samples=1000, n_chains=2, verbose=True)
+    _ = model.fit(df_clean)
 
-# ============================================================================
-# STEP 7: FIT MODEL WITH NEW FEATURES
-# ============================================================================
+    # ============================================================================
+    # STEP 8: FEATURE CORRELATION QUICK-CHECK
+    # ============================================================================
 
-print("\n" + "="*80)
-print("FITTING MODEL WITH CUSTOM FEATURES")
-print("="*80)
+    print("\n" + "=" * 80)
+    print("ANALYZING FEATURE CORRELATIONS")
+    print("=" * 80)
 
-print("""
-NOTE: The current SimpleBayesianModel uses a fixed set of features.
-To include custom features, you would need to either:
+    correlations = df_clean[
+        [
+            "Log_Unit_Sales_SI",
+            "Log_Price_SI",
+            "Log_Price_SI_lag1",
+            "Log_Price_SI_lag4",
+            "Price_Gap",
+            "Price_Index",
+        ]
+    ].corr()["Log_Unit_Sales_SI"].sort_values(ascending=False)
 
-1. Modify the model class to accept additional features
-2. Or manually add terms to the PyMC model
+    print("\nCorrelations with Log Sales:")
+    print(correlations)
 
-For this example, we'll show how you WOULD do it:
-""")
+    # ============================================================================
+    # STEP 9: SAVE ENHANCED DATA
+    # ============================================================================
 
-# Example of what you'd do (pseudocode):
-print(f"""
-# In bayesian_models.py, you could extend the model:
+    print("\n" + "=" * 80)
+    print("SAVING ENHANCED DATA")
+    print("=" * 80)
 
-class SimpleBayesianModel:
-    def __init__(self, custom_features=None, ...):
-        self.custom_features = custom_features or []
-    
-    def _build_model(self, data):
-        # ... existing code ...
-        
-        # Add custom features
-        for feature in self.custom_features:
-            if feature in data.columns:
-                beta = pm.Normal(f'beta_{feature}', mu=0, sigma=0.2)
-                mu += beta * data[feature].values
+    out_dir = REPO_ROOT / "output_example_03"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    output_path = out_dir / "enhanced_data.csv"
+    df_clean.to_csv(output_path, index=False)
 
-# Then use it:
-model = SimpleBayesianModel(
-    custom_features=['Price_x_Spring', 'Log_Price_SI_lag1']
-)
-""")
+    print(f"\n✓ Enhanced data saved to: {output_path}")
+    print(f"  Contains {len(df_clean.columns)} columns")
 
-# For now, fit standard model
-print(f"\nFitting standard model with basic features...")
-model = SimpleBayesianModel(
-    priors='default',
-    n_samples=1000,  # Fewer samples for demo
-    n_chains=2,
-    verbose=True
-)
+    print("\n" + "=" * 80)
+    print("✓ EXAMPLE 3 COMPLETE")
+    print("=" * 80)
 
-# Drop rows with NaN (from lagging)
-df_clean = df.dropna()
-print(f"After dropping NaN from lags: {len(df_clean)} rows")
 
-results = model.fit(df_clean)
-
-# ============================================================================
-# STEP 8: ANALYZING FEATURE IMPORTANCE
-# ============================================================================
-
-print("\n" + "="*80)
-print("ANALYZING FEATURE IMPORTANCE")
-print("="*80)
-
-# Show correlations with sales
-print(f"\nCorrelations with Log Sales:")
-correlations = df_clean[[
-    'Log_Unit_Sales_SI',
-    'Log_Price_SI',
-    'Log_Price_SI_lag1',
-    'Log_Price_SI_lag4',
-    'Price_Gap',
-    'Price_Index'
-]].corr()['Log_Unit_Sales_SI'].sort_values(ascending=False)
-
-print(correlations)
-
-# ============================================================================
-# STEP 9: RECOMMENDATIONS FOR CUSTOM FEATURES
-# ============================================================================
-
-print("\n" + "="*80)
-print("CUSTOM FEATURE RECOMMENDATIONS")
-print("="*80)
-
-print(f"""
-✓ Interaction Terms (Price × Season):
-  Purpose: Test if elasticity varies by season
-  Example: Price_x_Spring tests if Spring has different elasticity
-  Interpretation: If coefficient is significant, elasticity differs
-  
-✓ Lagged Features:
-  Purpose: Capture momentum/carryover effects
-  Example: Log_Price_SI_lag1 tests if last week's price matters
-  Use case: Promotional carryover, inventory effects
-  
-✓ Moving Averages:
-  Purpose: Reference price effects
-  Example: Price_SI_ma4 = recent average price
-  Use case: Consumers compare to "usual" price
-  
-✓ Custom Formulas:
-  Purpose: Any transformation you need
-  Example: Price_Gap = SI Price - PL Price
-  Use case: Test differential pricing effects
-
-💡 Best Practices:
-  1. Add one feature at a time and test
-  2. Check correlations before adding
-  3. Be careful with multicollinearity
-  4. Start simple, add complexity as needed
-  5. Always validate with domain knowledge
-
-⚠️ Warnings:
-  - Lagged features reduce sample size
-  - Too many features = overfitting
-  - Interactions can be hard to interpret
-  - Check for missing values after transformations
-""")
-
-# ============================================================================
-# STEP 10: SAVE ENHANCED DATA
-# ============================================================================
-
-print("\n" + "="*80)
-print("SAVING ENHANCED DATA")
-print("="*80)
-
-# Save data with all features for future use
-output_path = './output_example_03/enhanced_data.csv'
-df_clean.to_csv(output_path, index=False)
-print(f"\n✓ Enhanced data saved to: {output_path}")
-print(f"  Contains {len(df_clean.columns)} features")
-
-print("\n" + "="*80)
-print("✓ EXAMPLE 3 COMPLETE")
-print("="*80)
-
-print(f"""
-You now know how to:
-✓ Add interaction terms
-✓ Add lagged features  
-✓ Add moving averages
-✓ Add custom features with formulas
-✓ Analyze feature correlations
-
-Next steps:
-→ Modify bayesian_models.py to accept custom features
-→ Test specific hypotheses (e.g., seasonal elasticity)
-→ Build more sophisticated models
-""")
+if __name__ == "__main__":
+    main()
