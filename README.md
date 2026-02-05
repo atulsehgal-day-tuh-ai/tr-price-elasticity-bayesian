@@ -17,7 +17,7 @@ A complete, production-ready system for Bayesian price elasticity analysis with 
 
 ## 📋 Requirements
 
-- Python 3.8+
+- Python **3.12.x** (recommended)
 - PyMC 5.10+
 - See `requirements.txt` for full list
 
@@ -50,9 +50,27 @@ source ./venv312/bin/activate
 python --version
 ```
 
+### Markdown → HTML (for sharing business docs)
+
+To export a guide from `help_documents/` into a “paper-style” HTML file in `html/`:
+
+- **Windows (PowerShell)**:
+
+```powershell
+.\scripts\convert_help_md_to_html.ps1 -InputMd "Sparkling_Ice_Analytics_Plan_Business_Guide.md"
+```
+
+- **Linux/macOS (bash)**:
+
+```bash
+bash ./scripts/convert_help_md_to_html.sh Sparkling_Ice_Analytics_Plan_Business_Guide.md
+```
+
 ### Cloud setup (Cursor + GitHub Codespaces) — 16 cores / 64 GB RAM
 
 This repo supports running in GitHub Codespaces (and connecting from Cursor) via a Dev Container.
+
+> If you are running via **local venv** (or via an **SSH VM**), you do **not** need Docker or the devcontainer. It’s only for Codespaces / Dev Containers.
 
 - **What we added**: `.devcontainer/devcontainer.json`
 - **Why**:
@@ -182,6 +200,15 @@ python run_analysis.py --config my_config.yaml
 
 See **`architecture.md`** for a detailed architecture diagram, module responsibilities, call graphs, and the end-to-end data/model/report flow.
 
+### Business / stakeholder guides (recommended for non-technical audiences)
+
+The `help_documents/` folder contains short, business-friendly narratives that explain *what we’re doing and why*, using the same assumptions as the code:
+
+- **`help_documents/Sparkling_Ice_Analytics_Plan_Business_Guide.md`**: End-to-end “analytics plan” story (Bayesian vs classical, MCMC, why compute matters, dual elasticities, seasonality/holidays, hierarchical pooling, and which business questions we answer).
+- **`help_documents/Business_Stakeholder_Modeling_Plan.md`**: A concise modeling plan explaining why we use Bayesian + MCMC, why two elasticities, why brand-level is acceptable, and why hierarchical models.
+- **`help_documents/Recommendation_Separate_Base_Promo_Elasticity.md`**: Rationale for separating **base price elasticity** from **promotional elasticity** (strategic vs tactical decisions).
+- **`help_documents/Business_Stakeholder_Briefing_Portfolio_Seasonality.md`**: Why brand-level elasticity remains reliable even as portfolio evolves (seasonality dominates; model controls isolate price effects).
+
 ### Notebook walkthrough (recommended for first run)
 
 If you want to build confidence in the **data transformation** step-by-step before fitting models, start with:
@@ -297,16 +324,36 @@ price_elasticity_bayesian/
 ├── README.md
 ├── requirements.txt
 ├── config_template.yaml
+├── architecture.md
 ├── data_prep.py
 ├── bayesian_models.py
 ├── visualizations.py
 ├── run_analysis.py
+├── contract/
+│   └── PROJECT_CONTRACT.md
+├── notebooks/
+│   └── 01_data_transformation_exploration.ipynb
+├── help_documents/
+│   ├── Sparkling_Ice_Analytics_Plan_Business_Guide.md
+│   ├── Business_Stakeholder_Modeling_Plan.md
+│   ├── Recommendation_Separate_Base_Promo_Elasticity.md
+│   ├── Business_Stakeholder_Briefing_Portfolio_Seasonality.md
+│   └── Azure_VM_Cursor_MCMC_Setup_Guide.md
+├── scripts/
+│   ├── setup_venv_py312_windows.ps1
+│   ├── setup_venv_py312_linux.sh
+│   ├── convert_help_md_to_html.ps1
+│   ├── convert_help_md_to_html.sh
+│   └── md_to_html.py
 └── examples/
     ├── example_01_simple.py
     ├── example_02_hierarchical.py
     ├── example_03_add_features.py
-    └── example_04_costco.py
+    ├── example_04_costco.py
+    └── example_05_base_vs_promo.py
 ```
+
+> The `html/` folder is created by the Markdown → HTML conversion scripts and is **gitignored** by default.
 
 ## 🎓 Examples
 

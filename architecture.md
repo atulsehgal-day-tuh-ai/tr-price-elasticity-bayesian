@@ -37,6 +37,13 @@ Given weekly **Circana** CSV exports for one or more retailers (e.g., BJ’s, Sa
 - `README.md`: quickstart + examples
 - `contract/PROJECT_CONTRACT.md`: detailed blueprint/spec, deliverables, validation plan
 - `architecture.md` (this file): “how everything connects”
+- `help_documents/`: business-facing guides (analytics plan, base vs promo rationale, seasonality brief, VM setup)
+
+**Scripts / automation**
+
+- `scripts/setup_venv_py312_windows.ps1`, `scripts/setup_venv_py312_linux.sh`: create a Python 3.12 venv and install dependencies
+- `scripts/convert_help_md_to_html.ps1`, `scripts/convert_help_md_to_html.sh`: export a `help_documents/*.md` file to `html/*.html`
+- `scripts/md_to_html.py`: shared Markdown → HTML converter used by both wrappers
 
 **Examples**
 
@@ -44,6 +51,7 @@ Given weekly **Circana** CSV exports for one or more retailers (e.g., BJ’s, Sa
 - `examples/example_02_hierarchical.py`: hierarchical workflow
 - `examples/example_03_add_features.py`: feature engineering patterns + notes on model extension
 - `examples/example_04_costco.py`: “Costco missing promo” workflow
+- `examples/example_05_base_vs_promo.py`: base vs promo dual-elasticity showcase
 
 ---
 
@@ -213,6 +221,14 @@ The CLI wraps that same flow:
 
 If promo columns don’t exist in a retailer file, the code sets `Promo_Intensity` to `0.0` for those rows.
 
+**Dual-elasticity inputs (recommended when available)**
+
+If your Circana extracts include base-sales fields, the pipeline can compute a cleaner “strategic vs tactical” split:
+
+- `Base Dollar Sales`, `Base Unit Sales` → used to compute **Base Price**
+- `Dollar Sales`, `Unit Sales` → used to compute **Average Paid Price**
+- `Promo_Depth_SI = (AvgPrice / BasePrice) - 1` → a single “promo depth” feature (negative when discounted)
+
 ### 6.2 Output contract: “model-ready” DataFrame schema
 
 `ElasticityDataPrep.transform()` returns a DataFrame with **one row per week** (and per retailer, if `retailer_filter='All'`).
@@ -224,7 +240,8 @@ Common columns:
 - `Price_SI`, `Price_PL`
 - `Log_Unit_Sales_SI`
 - `Log_Price_SI`, `Log_Price_PL`
-- `Promo_Intensity_SI` (if promotions enabled)
+- `Promo_Depth_SI` (preferred when base sales fields are present and `separate_base_promo=True`)
+- `Promo_Intensity_SI` (fallback when base sales fields are not available)
 - `Week_Number` (if time trend enabled)
 - `Spring`, `Summer`, `Fall` (if seasonality enabled)
 
@@ -301,11 +318,11 @@ If you put `NaN` directly into the model matrix, PyMC sampling breaks (the log-l
 The system uses two mechanisms together:
 
 1. In `data_prep.py`, when a retailer is configured as missing a feature, the numeric column is set to a **safe default** (0.0) and an availability flag is set:
-   - missing promo → `Promo_Intensity_SI = 0.0` and `has_promo = 0`
+   - missing promo → `Promo_Depth_SI = 0.0` / `Promo_Intensity_SI = 0.0` and `has_promo = 0`
    - missing competitor → `Log_Price_PL = 0.0` and `has_competitor = 0`
 
 2. In `bayesian_models.py`, the linear predictor multiplies those feature columns by the flags:
-   - promo contribution is: `beta_promo * (Promo_Intensity_SI * has_promo)`
+   - promo contribution is: `beta_promo * (Promo * has_promo)` where `Promo` is `Promo_Depth_SI` when present, else `Promo_Intensity_SI`
    - cross-price contribution is: `elasticity_cross * (Log_Price_PL * has_competitor)`
 
 So for Costco rows where `has_promo = 0`, the promo term is exactly 0 and **does not influence the likelihood**—but the rest of the model still uses Costco’s own-price variation to estimate elasticity, and hierarchical pooling shares information across retailers.
