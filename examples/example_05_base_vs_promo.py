@@ -42,10 +42,21 @@ def main():
         )
     )
 
-    # NOTE: update these to your actual paths
+    DATA_DIR = REPO_ROOT / "data"
+    bjs_csv = DATA_DIR / "bjs.csv"
+    sams_csv = DATA_DIR / "sams.csv"
+
+    if not bjs_csv.exists() or not sams_csv.exists():
+        raise FileNotFoundError(
+            "Missing input CSV(s). Expected files:\n"
+            f"  - {bjs_csv}\n"
+            f"  - {sams_csv}\n\n"
+            "Place your Circana files in the repo's data/ folder (see README.md)."
+        )
+
     df = prep.transform(
-        bjs_path="path/to/bjs.csv",
-        sams_path="path/to/sams.csv",
+        bjs_path=str(bjs_csv),
+        sams_path=str(sams_csv),
     )
 
     print(f"\nPrepared data: {df.shape[0]} rows × {df.shape[1]} cols")

@@ -83,11 +83,23 @@ prep_config = PrepConfig(
 prep = ElasticityDataPrep(prep_config)
 
 # Transform data - NOTE: Include Costco path
-# NOTE: Update these paths to your actual data files
+DATA_DIR = REPO_ROOT / "data"
+bjs_csv = DATA_DIR / "bjs.csv"
+sams_csv = DATA_DIR / "sams.csv"
+costco_csv = DATA_DIR / "costco.csv"
+
+missing = [p for p in [bjs_csv, sams_csv, costco_csv] if not p.exists()]
+if missing:
+    raise FileNotFoundError(
+        "Missing input CSV(s). Expected files:\n"
+        + "\n".join([f"  - {p}" for p in [bjs_csv, sams_csv, costco_csv]])
+        + "\n\nPlace your Circana files in the repo's data/ folder (see README.md)."
+    )
+
 df = prep.transform(
-    bjs_path='path/to/bjs.csv',
-    sams_path='path/to/sams.csv',
-    costco_path='path/to/costco.csv'  # Add Costco!
+    bjs_path=str(bjs_csv),
+    sams_path=str(sams_csv),
+    costco_path=str(costco_csv),  # Add Costco!
 )
 
 print(f"\nData prepared: {len(df)} observations")
