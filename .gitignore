@@ -28,6 +28,7 @@ venv312/
 output/
 outputs/
 results/
+html/
 
 # Local data (do not commit raw retailer files)
 data/*
