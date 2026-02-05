@@ -171,6 +171,27 @@ class ElasticityDataPrep:
             'PRIVATE LABEL-BOTTLED WATER-SELTZER/SPARKLING/MINERAL WATER': 'Private Label'
         }
         df['Product_Short'] = df['Product'].map(product_map)
+
+        # Validate we can identify Sparkling Ice rows (required for dependent variable)
+        if df['Product_Short'].isna().all():
+            sample_products = df['Product'].dropna().astype(str).unique().tolist()[:15]
+            raise ValueError(
+                "No rows matched expected product names for Sparkling Ice / Private Label.\n"
+                "Expected one of:\n"
+                f"  - {self.config.brand_filters}\n\n"
+                "Sample Product values seen in the file:\n"
+                f"  - {sample_products}\n\n"
+                "Fix: update PrepConfig.brand_filters to match your Circana 'Product' values."
+            )
+
+        if 'Sparkling Ice' not in set(df['Product_Short'].dropna().unique()):
+            sample_products = df['Product'].dropna().astype(str).unique().tolist()[:15]
+            raise ValueError(
+                "Sparkling Ice rows were not found after filtering/mapping, so the model target cannot be built.\n"
+                "Sample Product values seen in the file:\n"
+                f"  - {sample_products}\n\n"
+                "Fix: update PrepConfig.brand_filters to match your Circana 'Product' values."
+            )
         
         # Dates
         df['Date'] = pd.to_datetime(
@@ -306,14 +327,25 @@ class ElasticityDataPrep:
         
         # Promo
         if self.config.include_promotions:
-            promo = df[df['Product_Short'] == 'Sparkling Ice'].pivot_table(
-                index=index_cols,
-                values='Promo_Intensity',
-                aggfunc='mean'
-            ).reset_index()
-            promo = promo.rename(columns={'Promo_Intensity': 'Promo_Intensity_SI'})
-            wide = wide.merge(promo, on=index_cols, how='left')
-            wide['Promo_Intensity_SI'] = wide['Promo_Intensity_SI'].fillna(0)
+            # Promo intensity is optional. If Sparkling Ice rows are present but promo columns are absent,
+            # _clean_data() sets Promo_Intensity=0.0. If Sparkling Ice subset is empty for some reason,
+            # fall back to zeros without crashing.
+            si = df[df['Product_Short'] == 'Sparkling Ice']
+            if 'Promo_Intensity' in df.columns and len(si) > 0:
+                promo = si.pivot_table(
+                    index=index_cols,
+                    values='Promo_Intensity',
+                    aggfunc='mean'
+                ).reset_index()
+                if 'Promo_Intensity' in promo.columns:
+                    promo = promo.rename(columns={'Promo_Intensity': 'Promo_Intensity_SI'})
+                    wide = wide.merge(promo, on=index_cols, how='left')
+
+            # Ensure column exists
+            if 'Promo_Intensity_SI' not in wide.columns:
+                wide['Promo_Intensity_SI'] = 0.0
+            else:
+                wide['Promo_Intensity_SI'] = wide['Promo_Intensity_SI'].fillna(0)
         
         return wide
 
