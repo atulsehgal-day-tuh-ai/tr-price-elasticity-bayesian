@@ -30,6 +30,55 @@ A complete, production-ready system for Bayesian price elasticity analysis with 
 pip install -r requirements.txt
 ```
 
+### Cloud setup (Cursor + GitHub Codespaces) — 16 cores / 64 GB RAM
+
+This repo supports running in GitHub Codespaces (and connecting from Cursor) via a Dev Container.
+
+- **What we added**: `.devcontainer/devcontainer.json`
+- **Why**:
+  - **Minimum machine spec** request for faster Bayesian sampling: **16 CPU / 64 GB RAM**
+  - Install build tooling (`g++`) so PyTensor can compile native code (avoids the “g++ not detected” warning and improves performance)
+
+#### 1) Dev Container configuration
+
+The config is here:
+
+- `.devcontainer/devcontainer.json`
+
+It sets `hostRequirements` (minimum spec) and uses `postCreateCommand` to install build tools + Python deps.
+
+> Note: `hostRequirements` expresses a **minimum** for Codespaces. It does not force a specific SKU if your account/org doesn’t have access to it.
+
+#### 2) Commit + push (required for Codespaces to see it)
+
+Codespaces builds from what’s in GitHub, so commit and push the `.devcontainer/` folder.
+
+#### 3) Create/open a Codespace and select the machine type
+
+In GitHub Codespaces:
+
+- Open your codespace’s menu (**…**) → **Change machine type** → choose **16-core / 64 GB** (if available) → **Update codespace**.
+
+GitHub docs: see “Changing the machine type for your codespace” in the GitHub Codespaces documentation.
+
+#### 4) If 16-core / 64 GB isn’t available in the dropdown
+
+Common reasons:
+
+- **Org policy restriction** (your organization/admin limited allowed machine types)
+- **Account/plan limitation** (larger machine types not enabled for your account/enterprise)
+- **Region capacity** (try a different region if you have the option)
+
+If you believe you should have access, open a ticket with GitHub Support and ask to enable larger Codespaces machine types for your account/org.
+
+#### 5) PowerShell note (the error we hit)
+
+If you try to create `devcontainer.json` from **PowerShell**, bash-style heredocs like:
+
+- `cat > file << 'EOF'`
+
+will fail with a parser error. Use `Set-Content` / a here-string in PowerShell, or just edit the file directly in the editor (recommended).
+
 ### Simple Usage
 
 ```python

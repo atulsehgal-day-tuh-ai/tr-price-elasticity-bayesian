@@ -1,0 +1,22 @@
+{
+  "name": "Bayesian Price Elasticity Analysis",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "hostRequirements": {
+    "cpus": 16,
+    "memory": "64gb",
+    "storage": "64gb"
+  },
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential g++ && python -m pip install --upgrade pip && pip install -r requirements.txt",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python"
+      }
+    }
+  },
+  "remoteUser": "vscode"
+}
