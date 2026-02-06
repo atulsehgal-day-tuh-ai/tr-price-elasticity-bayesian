@@ -25,6 +25,7 @@ if str(REPO_ROOT) not in sys.path:
 from data_prep import ElasticityDataPrep, PrepConfig
 from bayesian_models import HierarchicalBayesianModel
 from visualizations import generate_html_report
+import yaml
 
 def main():
     # ============================================================================
@@ -54,7 +55,9 @@ The system will automatically handle this using:
     retailer_config = {
         "BJs": {"has_promo": True, "has_competitor": True},
         "Sams": {"has_promo": True, "has_competitor": True},
-        "Costco": {"has_promo": False, "has_competitor": True},  # Costco: NO promo columns
+        # Costco CRX: no Private Label columns (competitor), and promo feature availability can be
+        # treated as "missing" for masking demonstrations (promo features safely default to 0).
+        "Costco": {"has_promo": False, "has_competitor": False},
     }
 
     # ============================================================================
@@ -64,6 +67,24 @@ The system will automatically handle this using:
     print("\n" + "=" * 80)
     print("DATA PREPARATION (WITH MISSING DATA HANDLING)")
     print("=" * 80)
+
+    # Load runtime retailer contracts from config_template.yaml so heterogeneous sources (Costco CRX)
+    # are parsed correctly (skiprows, product column rename, date parsing, price formulas, etc.).
+    retailer_data_contracts = None
+    try:
+        cfg_path = REPO_ROOT / "config_template.yaml"
+        with open(cfg_path, "r") as f:
+            cfg_yaml = yaml.safe_load(f) or {}
+        retailer_data_contracts = (cfg_yaml.get("data") or {}).get("retailer_data_contracts")
+    except Exception:
+        retailer_data_contracts = None
+
+    if retailer_data_contracts is None:
+        print(
+            "\n⚠️  WARNING: Could not load runtime retailer_data_contracts from config_template.yaml.\n"
+            "    Costco will be parsed using legacy Circana defaults and may be dropped during cleaning.\n"
+            "    Fix: ensure config_template.yaml exists and PyYAML is installed.\n"
+        )
 
     prep = ElasticityDataPrep(
         PrepConfig(
@@ -76,6 +97,7 @@ The system will automatically handle this using:
             volume_sales_factor_by_retailer={"Costco": 2.0},
             separate_base_promo=True,
             retailers=retailer_config,
+            retailer_data_contracts=retailer_data_contracts,
             verbose=True,
         )
     )
