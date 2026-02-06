@@ -9,7 +9,7 @@ A complete, production-ready system for Bayesian price elasticity analysis with 
 - **Base vs Promo Separation (V2)**: Separates strategic (base price) impact from tactical (promotional discount) impact
 - **Hierarchical Support**: Multi-retailer analysis with automatic shrinkage
 - **Flexible Priors**: Default (weakly informative), informative, vague, or custom
-- **Missing Data Handling**: Automatically handles retailers with missing features (e.g., Costco without promo data)
+- **Missing Data Handling**: Automatically handles retailers with missing features (e.g., Costco without Private Label / competitor data)
 - **Feature Engineering**: Easy-to-use methods for creating custom features
 - **Comprehensive Visualizations**: Trace plots, posterior distributions, seasonal patterns, revenue scenarios
 - **HTML Reports**: Complete interactive reports with all analyses
@@ -198,7 +198,7 @@ python run_analysis.py --config my_config.yaml
 
 ### Architecture (how it all connects)
 
-See **`architecture.md`** for a detailed architecture diagram, module responsibilities, call graphs, and the end-to-end data/model/report flow.
+See **`help_documents/architecture.md`** for a detailed architecture diagram, module responsibilities, call graphs, and the end-to-end data/model/report flow.
 
 ### Business / stakeholder guides (recommended for non-technical audiences)
 
@@ -264,7 +264,8 @@ prep = ElasticityDataPrep(
         retailers={
             'BJs': {'has_promo': True, 'has_competitor': True},
             'Sams': {'has_promo': True, 'has_competitor': True},
-            'Costco': {'has_promo': False, 'has_competitor': True}  # Missing promo!
+            # Costco CRX typically has promo data, but does not include Private Label rows for cross-price.
+            'Costco': {'has_promo': True, 'has_competitor': False}
         },
         # If Costco (or another retailer) is missing `Volume Sales`, provide a constant factor
         # so data prep can compute: Volume Sales = Unit Sales × factor.
@@ -319,20 +320,23 @@ Log\_Volume\_Sales\_{SI,t} = \alpha
 
 with \(\epsilon_t \sim \mathcal{N}(0, \sigma)\).
 
-**Sources / calculations (raw Circana → engineered features):**
+**Sources / calculations (raw retailer exports → engineered features; contract-driven):**
 - **`Log_Volume_Sales_SI` (dependent variable)**  
   - **Source**: Sparkling Ice `Volume Sales` (raw column: `Volume Sales`) after filtering `Product` to Sparkling Ice aggregate and pivoting to `Volume_Sales_SI`
   - **Fallback (strict)**: if `Volume Sales` is missing for a retailer, compute `Volume Sales = Unit Sales × factor` using `PrepConfig.volume_sales_factor_by_retailer`
   - **Transform**: `Log_Volume_Sales_SI = ln(Volume_Sales_SI)` (requires `Volume_Sales_SI > 0`)
 
 - **`Log_Base_Price_SI` (strategic/base price term)**  
-  - **Source**: raw `Base Dollar Sales`, `Base Unit Sales` (Sparkling Ice) → `Base_Price_SI = Base_Dollar_Sales_SI / Base_Unit_Sales_SI`
+  - **Source (Circana; BJ’s/Sam’s)**: `Base Dollar Sales`, `Base Unit Sales` → `Base_Price_SI = Base_Dollar_Sales_SI / Base_Unit_Sales_SI`
+  - **Source (Costco CRX)**: `Non Promoted Dollars`, `Non Promoted Units` → `Base_Price_SI = Non Promoted Dollars / Non Promoted Units` (with fallback to `Average Price per Unit` when non-promoted units are below the contract threshold)
   - **Guardrails**: if base sales columns are missing/undefined for weeks, the pipeline imputes a proxy `Base_Price_SI` from observed average prices (see `PrepConfig.base_price_proxy_window` and `base_price_imputed_warn_threshold`)
   - **Transform**: `Log_Base_Price_SI = ln(Base_Price_SI)` (requires `Base_Price_SI > 0`)
 
 - **`Promo_Depth_SI` (tactical/promo term)**  
   - **Source**:
-    - `Avg_Price_SI = Dollar_Sales_SI / Unit_Sales_SI` (raw: `Dollar Sales`, `Unit Sales`)
+    - `Avg_Price_SI` is contract-driven:
+      - Circana: `Avg_Price_SI = Dollar_Sales_SI / Unit_Sales_SI`
+      - Costco CRX: `Avg_Price_SI = Avg Net Price`
     - `Promo_Depth_SI = (Avg_Price_SI / Base_Price_SI) - 1` (negative when discounted)
   - **Stability**: NaN/inf handled and values are clipped to a reasonable range for robustness
 
@@ -381,7 +385,6 @@ price_elasticity_bayesian/
 ├── README.md
 ├── requirements.txt
 ├── config_template.yaml
-├── architecture.md
 ├── data_prep.py
 ├── bayesian_models.py
 ├── visualizations.py
@@ -391,6 +394,7 @@ price_elasticity_bayesian/
 ├── notebooks/
 │   └── 01_data_transformation_exploration.ipynb
 ├── help_documents/
+│   ├── architecture.md
 │   ├── Sparkling_Ice_Analytics_Plan_Business_Guide.md
 │   ├── Sparkling_Ice_Analytics_Plan_Techno_Functional_Guide.md
 │   └── Azure_VM_Cursor_MCMC_Setup_Guide.md

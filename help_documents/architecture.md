@@ -36,7 +36,7 @@ Given weekly **Circana** CSV exports for one or more retailers (e.g., BJ’s, Sa
 
 - `README.md`: quickstart + examples
 - `contract/PROJECT_CONTRACT.md`: detailed blueprint/spec, deliverables, validation plan
-- `architecture.md` (this file): “how everything connects”
+- `help_documents/architecture.md` (this file): “how everything connects”
 - `help_documents/`: narrative guides and operational runbooks
   - `Sparkling_Ice_Analytics_Plan_Business_Guide.md`: business story and decision framing
   - `Sparkling_Ice_Analytics_Plan_Techno_Functional_Guide.md`: combined business + technical deep dive (data contract, model form, implementation pointers)
@@ -53,7 +53,7 @@ Given weekly **Circana** CSV exports for one or more retailers (e.g., BJ’s, Sa
 - `examples/example_01_simple.py`: simple/pooled workflow
 - `examples/example_02_hierarchical.py`: hierarchical workflow
 - `examples/example_03_add_features.py`: feature engineering patterns + notes on model extension
-- `examples/example_04_costco.py`: “Costco missing promo” workflow
+- `examples/example_04_costco.py`: retailer with missing features (illustrative missing-promo workflow)
 - `examples/example_05_base_vs_promo.py`: base vs promo dual-elasticity showcase
 
 ---
@@ -67,7 +67,7 @@ flowchart LR
   subgraph Inputs
     A["BJs Circana CSV"];
     B["Sams Circana CSV"];
-    C["Costco Circana CSV (optional)"];
+    C["Costco CRX CSV (optional)"];
     Y["Config YAML (optional)"];
   end
 
@@ -208,9 +208,23 @@ The CLI wraps that same flow:
 
 ## 6) Data contracts
 
-### 6.1 Input contract: Circana CSV expectations
+### 6.1 Input contracts: per-retailer CSV expectations
 
-`ElasticityDataPrep._load_data()` reads CSVs with `skiprows=2`. The pipeline expects typical Circana-style columns:
+The data prep layer supports heterogeneous retailer sources (Circana, Costco CRX, etc.) using a YAML-driven `retailer_data_contracts` block in `config_template.yaml`.
+
+If `retailer_data_contracts` is provided, `ElasticityDataPrep` uses it to drive:
+- header handling (`skiprows`)
+- product identifier column name (`Product` vs `Item`)
+- date parsing (prefix strip vs regex extract)
+- average price calculation (formula vs direct column, e.g., Costco `Avg Net Price`)
+- base price calculation (formula + fallback threshold)
+- whether a direct `Volume Sales` column exists or needs computation via `volume_sales_factor_by_retailer`
+
+If contracts are not provided, the pipeline falls back to legacy Circana defaults.
+
+#### Circana-style (BJ’s / Sam’s) expectations
+
+`ElasticityDataPrep._load_data()` reads Circana CSVs with `skiprows=2`. The pipeline expects typical Circana-style columns:
 
 - `Time` (e.g., `"Week Ending 01-05-25"`)
 - `Product` (string; used to filter Sparkling Ice vs Private Label)
@@ -224,12 +238,22 @@ The CLI wraps that same flow:
 
 If promo columns don’t exist in a retailer file, the code sets `Promo_Intensity` to `0.0` for those rows.
 
+#### Costco CRX expectations (high level)
+
+Costco uses a different schema (CRX extract). The contract typically configures:
+- `skiprows=1`
+- `product_column="Item"` (renamed to `Product` internally)
+- `brand_filter="sparkling ice core"` (to select the brand aggregate, not the individual UPC lines)
+- average price paid from `Avg Net Price` (direct column)
+- base price from `Non Promoted Dollars / Non Promoted Units` with fallback to `Average Price per Unit` when non-promoted units are too small
+- no private label rows → `has_competitor=0` (cross-price term masked out)
+
 **Dual-elasticity inputs (recommended when available)**
 
 If your Circana extracts include base-sales fields, the pipeline can compute a cleaner “strategic vs tactical” split:
 
 - `Base Dollar Sales`, `Base Unit Sales` → used to compute **Base Price**
-- `Dollar Sales`, `Unit Sales` → used to compute **Average Paid Price**
+- `Dollar Sales`, `Unit Sales` → used to compute **Average Paid Price** (Circana). For Costco CRX, the contract typically uses `Avg Net Price`.
 - `Promo_Depth_SI = (AvgPrice / BasePrice) - 1` → a single “promo depth” feature (negative when discounted)
 
 ### 6.2 Output contract: “model-ready” DataFrame schema
@@ -311,7 +335,7 @@ In code this is implemented in `HierarchicalBayesianModel._build_model()` with:
 
 Some retailers might lack a feature:
 
-- **Costco** may have **no promo columns** → promo intensity cannot be computed.
+- **Costco** typically has promo fields (CRX non-promoted vs promoted splits), but has **no Private Label / competitor series** → cross-price cannot be computed.
 - Some retailers might not have a valid competitor series (cross-price).
 
 If you put `NaN` directly into the model matrix, PyMC sampling breaks (the log-likelihood becomes NaN).
@@ -328,7 +352,7 @@ The system uses two mechanisms together:
    - promo contribution is: `beta_promo * (Promo * has_promo)` where `Promo` is `Promo_Depth_SI` when present, else `Promo_Intensity_SI`
    - cross-price contribution is: `elasticity_cross * (Log_Price_PL * has_competitor)`
 
-So for Costco rows where `has_promo = 0`, the promo term is exactly 0 and **does not influence the likelihood**—but the rest of the model still uses Costco’s own-price variation to estimate elasticity, and hierarchical pooling shares information across retailers.
+So for Costco rows where `has_competitor = 0`, the cross-price term is exactly 0 and **does not influence the likelihood**—but the rest of the model still uses Costco’s own-price and promo variation (when present) to estimate elasticities, and hierarchical pooling shares information across retailers.
 
 ### Why this is statistically reasonable
 

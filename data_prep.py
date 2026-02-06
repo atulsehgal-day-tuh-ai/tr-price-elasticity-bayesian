@@ -4,22 +4,29 @@ Price Elasticity Data Preparation Module
 Complete data transformation pipeline for Bayesian elasticity analysis.
 
 Features:
-- Loads Circana CSV files (BJ's, Sam's, Costco)
-- Filters to brand-level data
+- Config-driven retailer support (BJ's, Sam's, Costco, or any future retailer)
+- Per-retailer data contracts: column names, date formats, price calculations
+- No hardcoded retailer logic — all behavior driven by YAML configuration
+- Loads heterogeneous CSV files with different schemas
+- Filters to brand-level data via fuzzy matching
 - Creates log transformations
-- Handles missing features (Costco-ready)
+- Handles missing features via availability masks
 - Easy feature engineering
 - Validates output quality
 
 Usage:
     from data_prep import ElasticityDataPrep
-    
+
     prep = ElasticityDataPrep()
     df = prep.transform('bjs.csv', 'sams.csv')
+
+    # With Costco:
+    df = prep.transform('bjs.csv', 'sams.csv', costco_path='costco.csv')
 """
 
 import pandas as pd
 import numpy as np
+import re
 from pathlib import Path
 from typing import Union, Optional, Dict, List
 import logging
@@ -33,7 +40,7 @@ from dataclasses import dataclass, field
 @dataclass
 class PrepConfig:
     """Configuration for data preparation"""
-    
+
     retailer_filter: str = 'All'  # 'Overall', 'All', 'BJs', 'Sams', 'Costco'
     include_seasonality: bool = True
     include_promotions: bool = True
@@ -58,6 +65,10 @@ class PrepConfig:
     # conservative substring-based matching (e.g., Product contains "sparkling ice").
     enable_brand_fuzzy_match: bool = True
     retailers: Optional[Dict] = None
+    # Per-retailer data contracts: column names, date formats, price calc rules.
+    # Keyed by retailer name (must match the retailer label assigned during load).
+    # See config_template.yaml for full schema.
+    retailer_data_contracts: Optional[Dict] = None
     verbose: bool = True
 
 
@@ -68,10 +79,12 @@ class PrepConfig:
 class ElasticityDataPrep:
     """
     Complete data preparation pipeline
-    
-    Transforms raw Circana data into model-ready format.
+
+    Transforms raw retail data into model-ready format.
+    Supports heterogeneous data sources (Circana, CRX, etc.) via
+    config-driven retailer data contracts.
     """
-    
+
     def __init__(self, config: Optional[PrepConfig] = None):
         """Initialize with configuration"""
         self.config = config or PrepConfig()
@@ -79,20 +92,59 @@ class ElasticityDataPrep:
         self.raw_data = None
         self.cleaned_data = None
         self.final_data = None
-    
+
     def _setup_logger(self):
         """Setup logging"""
         logger = logging.getLogger('ElasticityDataPrep')
         logger.setLevel(logging.INFO if self.config.verbose else logging.WARNING)
-        
+
         if not logger.handlers:
             handler = logging.StreamHandler()
             formatter = logging.Formatter('%(message)s')
             handler.setFormatter(formatter)
             logger.addHandler(handler)
-        
+
         return logger
-    
+
+    # ========================================================================
+    # RETAILER DATA CONTRACT HELPERS
+    # ========================================================================
+
+    def _get_contract(self, retailer: str) -> Optional[Dict]:
+        """Get the data contract for a retailer, or None if not configured."""
+        if not self.config.retailer_data_contracts:
+            return None
+
+        # Exact match first
+        if retailer in self.config.retailer_data_contracts:
+            return self.config.retailer_data_contracts[retailer]
+
+        # Normalized match
+        norm = self._norm_retailer(retailer)
+        for key, contract in self.config.retailer_data_contracts.items():
+            if self._norm_retailer(key) == norm:
+                return contract
+
+        return None
+
+    @staticmethod
+    def _norm_retailer(s: str) -> str:
+        """Normalize retailer labels for robust matching."""
+        return (
+            str(s)
+            .lower()
+            .replace("'", "")
+            .replace("\u2019", "")
+            .replace(".", "")
+            .replace("-", " ")
+            .replace("&", "and")
+            .strip()
+        )
+
+    # ========================================================================
+    # MAIN PIPELINE
+    # ========================================================================
+
     def transform(
         self,
         bjs_path: Union[str, Path],
@@ -100,115 +152,283 @@ class ElasticityDataPrep:
         costco_path: Optional[Union[str, Path]] = None
     ) -> pd.DataFrame:
         """Main transformation pipeline"""
-        
-        self.logger.info("="*80)
+
+        self.logger.info("=" * 80)
         self.logger.info("STARTING DATA TRANSFORMATION")
-        self.logger.info("="*80)
-        
+        self.logger.info("=" * 80)
+
         # Load
         self.logger.info("\nStep 1: Loading data...")
         self.raw_data = self._load_data(bjs_path, sams_path, costco_path)
         self.logger.info(f"  Loaded {len(self.raw_data)} rows")
-        
+
         # Clean
         self.logger.info("\nStep 2: Cleaning data...")
         self.cleaned_data = self._clean_data(self.raw_data)
         self.logger.info(f"  Cleaned to {len(self.cleaned_data)} rows")
-        
+
         # Features
         self.logger.info("\nStep 3: Creating features...")
         self.final_data = self._create_features(self.cleaned_data)
-        self.logger.info(f"  Final: {len(self.final_data)} rows × {len(self.final_data.columns)} columns")
-        
+        # Use plain "x" rather than the multiplication sign to avoid Windows console encoding issues.
+        self.logger.info(f"  Final: {len(self.final_data)} rows x {len(self.final_data.columns)} columns")
+
         # Validate
         self.logger.info("\nStep 4: Validating...")
         self._validate_output(self.final_data)
         self.logger.info("  ✓ Validation passed")
-        
-        self.logger.info("\n" + "="*80)
+
+        self.logger.info("\n" + "=" * 80)
         self.logger.info("✓ TRANSFORMATION COMPLETE")
-        self.logger.info("="*80)
-        
+        self.logger.info("=" * 80)
+
         return self.final_data
-    
+
+    # ========================================================================
+    # DATA LOADING (config-driven per retailer)
+    # ========================================================================
+
+    def _load_single_retailer(self, path: Union[str, Path], retailer_label: str) -> pd.DataFrame:
+        """
+        Load a single retailer CSV using its data contract (if configured).
+        Falls back to legacy Circana defaults if no contract is found.
+        """
+        contract = self._get_contract(retailer_label)
+
+        # Determine skiprows from contract or default to 2 (Circana legacy)
+        skiprows = contract.get('skiprows', 2) if contract else 2
+
+        self.logger.info(f"  Loading {retailer_label}... (skiprows={skiprows})")
+        df = pd.read_csv(path, skiprows=skiprows)
+        df['Retailer'] = retailer_label
+
+        # If the contract specifies a product_column that differs from 'Product',
+        # rename it to 'Product' for downstream compatibility.
+        if contract:
+            product_col = contract.get('product_column', 'Product')
+            if product_col != 'Product' and product_col in df.columns:
+                df = df.rename(columns={product_col: 'Product'})
+                self.logger.info(f"    Renamed '{product_col}' → 'Product'")
+
+        return df
+
     def _load_data(self, bjs_path, sams_path, costco_path=None) -> pd.DataFrame:
-        """Load Circana CSV files"""
-        
+        """Load CSV files for all retailers"""
+
         dfs = []
-        
+
         # BJ's
-        self.logger.info("  Loading BJ's...")
-        bjs = pd.read_csv(bjs_path, skiprows=2)
-        bjs['Retailer'] = "BJ's"
-        dfs.append(bjs)
-        
+        dfs.append(self._load_single_retailer(bjs_path, "BJ's"))
+
         # Sam's
-        self.logger.info("  Loading Sam's Club...")
-        sams = pd.read_csv(sams_path, skiprows=2)
-        sams['Retailer'] = "Sam's Club"
-        dfs.append(sams)
-        
+        dfs.append(self._load_single_retailer(sams_path, "Sam's Club"))
+
         # Costco
         if costco_path:
-            self.logger.info("  Loading Costco...")
-            costco = pd.read_csv(costco_path, skiprows=2)
-            costco['Retailer'] = "Costco"
-            dfs.append(costco)
-        
+            dfs.append(self._load_single_retailer(costco_path, "Costco"))
+
         return pd.concat(dfs, ignore_index=True)
-    
+
+    # ========================================================================
+    # DATA CLEANING (config-driven per retailer)
+    # ========================================================================
+
+    def _parse_date_for_retailer(self, time_series: pd.Series, retailer: str) -> pd.Series:
+        """
+        Parse date column using retailer-specific rules from the data contract.
+        Falls back to legacy Circana format if no contract is found.
+        """
+        contract = self._get_contract(retailer)
+
+        if contract and 'date_regex' in contract:
+            # Regex extraction (e.g., Costco: "1 week ending 01-08-2023")
+            pattern = contract['date_regex']
+            date_fmt = contract.get('date_format', '%m-%d-%Y')
+            extracted = time_series.str.extract(pattern, expand=False)
+            return pd.to_datetime(extracted, format=date_fmt)
+        elif contract and 'date_prefix' in contract:
+            # Prefix stripping (e.g., BJ's/Sam's: "Week Ending 01-08-23")
+            prefix = contract['date_prefix']
+            date_fmt = contract.get('date_format', '%m-%d-%y')
+            stripped = time_series.str.replace(prefix, '', regex=False)
+            return pd.to_datetime(stripped, format=date_fmt)
+        else:
+            # Legacy default: Circana format
+            stripped = time_series.str.replace('Week Ending ', '', regex=False)
+            return pd.to_datetime(stripped, format='%m-%d-%y')
+
+    def _compute_avg_price_for_retailer(self, df: pd.DataFrame, retailer: str) -> pd.Series:
+        """
+        Compute average price paid using retailer-specific rules.
+        Falls back to Dollar Sales / Unit Sales if no contract is found.
+        """
+        contract = self._get_contract(retailer)
+
+        if contract and 'price_calc' in contract:
+            avg_price_rule = contract['price_calc'].get('avg_price', 'Dollar Sales / Unit Sales')
+
+            # Direct column reference (e.g., "Avg Net Price")
+            if '/' not in avg_price_rule and avg_price_rule in df.columns:
+                self.logger.info(f"    {retailer}: Avg_Price from column '{avg_price_rule}'")
+                return df[avg_price_rule].astype(float)
+
+            # Division formula (e.g., "Dollar Sales / Unit Sales")
+            if '/' in avg_price_rule:
+                parts = [p.strip() for p in avg_price_rule.split('/')]
+                if len(parts) == 2 and parts[0] in df.columns and parts[1] in df.columns:
+                    self.logger.info(f"    {retailer}: Avg_Price from '{parts[0]}' / '{parts[1]}'")
+                    return df[parts[0]].astype(float) / df[parts[1]].replace(0, np.nan).astype(float)
+
+        # Default: Dollar Sales / Unit Sales
+        return df['Dollar Sales'].astype(float) / df['Unit Sales'].replace(0, np.nan).astype(float)
+
+    def _compute_base_price_for_retailer(self, df: pd.DataFrame, retailer: str) -> pd.Series:
+        """
+        Compute base price using retailer-specific rules.
+        Falls back to Base Dollar Sales / Base Unit Sales (Circana standard).
+        Supports a fallback column + minimum-units threshold for robustness.
+        """
+        contract = self._get_contract(retailer)
+
+        if contract and 'price_calc' in contract:
+            base_rule = contract['price_calc'].get('base_price')
+
+            if base_rule:
+                # Division formula (e.g., "Non Promoted Dollars / Non Promoted Units")
+                if '/' in base_rule:
+                    parts = [p.strip() for p in base_rule.split('/')]
+                    if len(parts) == 2 and parts[0] in df.columns and parts[1] in df.columns:
+                        numerator = df[parts[0]].astype(float)
+                        denominator = df[parts[1]].replace(0, np.nan).astype(float)
+                        base_price = numerator / denominator
+
+                        # Apply fallback if configured
+                        fallback_col = contract['price_calc'].get('base_price_fallback')
+                        min_units = contract['price_calc'].get('base_price_min_units', 0)
+
+                        if fallback_col and fallback_col in df.columns and min_units > 0:
+                            # Where denominator units < threshold, use fallback column
+                            low_units_mask = df[parts[1]].astype(float) < min_units
+                            fallback_count = low_units_mask.sum()
+                            if fallback_count > 0:
+                                self.logger.info(
+                                    f"    {retailer}: Base price fallback applied for "
+                                    f"{fallback_count} rows where {parts[1]} < {min_units}"
+                                )
+                                base_price = base_price.where(
+                                    ~low_units_mask,
+                                    df[fallback_col].astype(float)
+                                )
+
+                        self.logger.info(f"    {retailer}: Base_Price from '{base_rule}'")
+                        return base_price
+
+                # Direct column reference
+                if base_rule in df.columns:
+                    self.logger.info(f"    {retailer}: Base_Price from column '{base_rule}'")
+                    return df[base_rule].astype(float)
+
+        # Default: Circana Base Dollar Sales / Base Unit Sales
+        if 'Base Dollar Sales' in df.columns and 'Base Unit Sales' in df.columns:
+            denom = df['Base Unit Sales'].replace(0, np.nan).astype(float)
+            return df['Base Dollar Sales'].astype(float) / denom
+
+        # No base price available — return NaN (handled downstream by proxy logic)
+        return pd.Series(np.nan, index=df.index)
+
     def _clean_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """Clean and filter data"""
-        
+
         df = df.copy()
         df_all = df.copy()
-        
-        # Filter to brands (exact match first)
-        df = df[df['Product'].isin(self.config.brand_filters)]
-        
-        # Retailer filter
-        if self.config.retailer_filter == 'BJs':
-            df = df[df['Retailer'] == "BJ's"]
-        elif self.config.retailer_filter == 'Sams':
-            df = df[df['Retailer'] == "Sam's Club"]
-        elif self.config.retailer_filter == 'Costco':
-            df = df[df['Retailer'] == "Costco"]
-        
-        # Product names (exact map first)
-        product_map = {
-            'Total Sparkling Ice Core Brand': 'Sparkling Ice',
-            'PRIVATE LABEL-BOTTLED WATER-SELTZER/SPARKLING/MINERAL WATER': 'Private Label'
-        }
-        df['Product_Short'] = df['Product'].map(product_map)
 
-        def _infer_product_short(product: str) -> Optional[str]:
-            s = str(product).lower()
-            if 'sparkling ice' in s:
+        # ----------------------------------------------------------------
+        # Product filtering: use per-retailer brand_filter from contracts
+        # ----------------------------------------------------------------
+
+        # Build a per-retailer brand filter map from data contracts
+        retailer_brand_filters = {}  # retailer -> brand_filter substring
+        retailer_competitor_filters = {}  # retailer -> competitor_filter substring (or None)
+        if self.config.retailer_data_contracts:
+            for r_key, contract in self.config.retailer_data_contracts.items():
+                bf = contract.get('brand_filter')
+                cf = contract.get('competitor_filter')
+                if bf:
+                    retailer_brand_filters[r_key] = bf.lower()
+                retailer_competitor_filters[r_key] = cf.lower() if cf else None
+
+        def _match_retailer_key(retailer_label: str) -> Optional[str]:
+            """Find the contract key that matches a retailer label."""
+            norm = self._norm_retailer(retailer_label)
+            for key in (self.config.retailer_data_contracts or {}):
+                if self._norm_retailer(key) == norm:
+                    return key
+            return None
+
+        # Assign Product_Short using retailer-aware fuzzy matching
+        def _assign_product_short(row) -> Optional[str]:
+            product = str(row.get('Product', '')).lower()
+            retailer = str(row.get('Retailer', ''))
+            contract_key = _match_retailer_key(retailer)
+
+            # Try retailer-specific brand filter first
+            if contract_key and contract_key in retailer_brand_filters:
+                brand_sub = retailer_brand_filters[contract_key]
+                if brand_sub in product:
+                    return 'Sparkling Ice'
+
+                comp_sub = retailer_competitor_filters.get(contract_key)
+                if comp_sub and comp_sub in product:
+                    return 'Private Label'
+
+                return None
+
+            # Fallback: global fuzzy matching (original logic)
+            if 'sparkling ice' in product:
                 return 'Sparkling Ice'
-            if 'private label' in s:
+            if 'private label' in product:
                 return 'Private Label'
             return None
 
-        def _apply_retailer_filter(df_in: pd.DataFrame) -> pd.DataFrame:
-            if self.config.retailer_filter == 'BJs':
-                return df_in[df_in['Retailer'] == "BJ's"]
-            if self.config.retailer_filter == 'Sams':
-                return df_in[df_in['Retailer'] == "Sam's Club"]
-            if self.config.retailer_filter == 'Costco':
-                return df_in[df_in['Retailer'] == "Costco"]
-            return df_in
+        # Product filtering strategy:
+        # - If retailer_data_contracts are provided, prefer retailer-aware fuzzy matching.
+        #   This avoids dropping retailers whose product labels differ from the legacy
+        #   Circana exact strings (e.g., Costco "Item" values).
+        # - Otherwise, keep legacy behavior: exact brand_filters first, then fuzzy fallback.
 
-        # If exact matching didn't produce Sparkling Ice, fall back to fuzzy matching
-        if df.empty or ('Sparkling Ice' not in set(df['Product_Short'].dropna().unique())):
-            if self.config.enable_brand_fuzzy_match:
-                self.logger.warning(
-                    "  ⚠️ Sparkling Ice not found using exact brand_filters; attempting fuzzy Product matching."
-                )
-                df2 = _apply_retailer_filter(df_all.copy())
-                df2['Product_Short'] = df2['Product'].map(product_map)
-                df2['Product_Short'] = df2['Product_Short'].fillna(df2['Product'].map(_infer_product_short))
-                df2 = df2[df2['Product_Short'].isin(['Sparkling Ice', 'Private Label'])]
-                df = df2
+        if self.config.retailer_data_contracts:
+            df2 = self._apply_retailer_filter(df_all.copy())
+            df2['Product_Short'] = df2.apply(_assign_product_short, axis=1)
+            df2 = df2[df2['Product_Short'].isin(['Sparkling Ice', 'Private Label'])]
+            df = df2
+        else:
+            # Step 1: Try exact match against brand_filters (legacy behavior)
+            if 'Product' in df.columns:
+                df = df[df['Product'].isin(self.config.brand_filters)]
+
+            # Retailer filter
+            df = self._apply_retailer_filter(df)
+
+            # Product names (exact map first)
+            product_map = {
+                'Total Sparkling Ice Core Brand': 'Sparkling Ice',
+                'PRIVATE LABEL-BOTTLED WATER-SELTZER/SPARKLING/MINERAL WATER': 'Private Label'
+            }
+            if 'Product' in df.columns:
+                df['Product_Short'] = df['Product'].map(product_map)
+
+            # If exact matching didn't produce Sparkling Ice, fall back to fuzzy matching
+            if df.empty or ('Product_Short' not in df.columns) or \
+               ('Sparkling Ice' not in set(df['Product_Short'].dropna().unique())):
+                if self.config.enable_brand_fuzzy_match:
+                    self.logger.warning(
+                        "  ⚠️ Sparkling Ice not found using exact brand_filters; "
+                        "attempting fuzzy Product matching (retailer-aware)."
+                    )
+                    df2 = self._apply_retailer_filter(df_all.copy())
+                    df2['Product_Short'] = df2.apply(_assign_product_short, axis=1)
+                    df2 = df2[df2['Product_Short'].isin(['Sparkling Ice', 'Private Label'])]
+                    df = df2
 
         # Final validation: must have Sparkling Ice
         if df.empty or ('Sparkling Ice' not in set(df['Product_Short'].dropna().unique())):
@@ -219,21 +439,51 @@ class ElasticityDataPrep:
                 "Sample Product values seen in the file:\n"
                 f"  - {sample_products}\n\n"
                 "Fix options:\n"
-                "  1) Update PrepConfig.brand_filters to match your Circana 'Product' values\n"
-                "  2) Keep enable_brand_fuzzy_match=True and ensure the Product string contains 'sparkling ice'\n"
+                "  1) Update PrepConfig.brand_filters to match your 'Product' values\n"
+                "  2) Update retailer_data_contracts brand_filter for the relevant retailer\n"
+                "  3) Keep enable_brand_fuzzy_match=True and ensure the Product string contains 'sparkling ice'\n"
             )
-        
-        # Dates
-        df['Date'] = pd.to_datetime(
-            df['Time'].str.replace('Week Ending ', ''),
-            format='%m-%d-%y'
-        )
-        
-        # Prices
-        df['Avg_Price'] = df['Dollar Sales'] / df['Unit Sales']
 
-        # Volume Sales (dependent variable input)
-        # Circana may provide 'Volume Sales'. If missing for a retailer/file, we can compute it from Unit Sales × factor.
+        # ----------------------------------------------------------------
+        # Date parsing: per-retailer format
+        # ----------------------------------------------------------------
+        if 'Retailer' in df.columns:
+            # Parse dates per retailer (each may have different format)
+            date_parts = []
+            for retailer in df['Retailer'].unique():
+                mask = df['Retailer'] == retailer
+                retailer_df = df.loc[mask]
+                date_col = 'Time'
+                contract = self._get_contract(retailer)
+                if contract:
+                    date_col = contract.get('date_column', 'Time')
+                parsed = self._parse_date_for_retailer(retailer_df[date_col], retailer)
+                date_parts.append(pd.Series(parsed.values, index=retailer_df.index))
+            df['Date'] = pd.concat(date_parts)
+        else:
+            # Single retailer fallback
+            df['Date'] = pd.to_datetime(
+                df['Time'].str.replace('Week Ending ', '', regex=False),
+                format='%m-%d-%y'
+            )
+
+        # ----------------------------------------------------------------
+        # Price calculations: per-retailer avg price
+        # ----------------------------------------------------------------
+        if 'Retailer' in df.columns:
+            price_parts = []
+            for retailer in df['Retailer'].unique():
+                mask = df['Retailer'] == retailer
+                retailer_df = df.loc[mask]
+                prices = self._compute_avg_price_for_retailer(retailer_df, retailer)
+                price_parts.append(pd.Series(prices.values, index=retailer_df.index))
+            df['Avg_Price'] = pd.concat(price_parts)
+        else:
+            df['Avg_Price'] = df['Dollar Sales'] / df['Unit Sales']
+
+        # ----------------------------------------------------------------
+        # Volume Sales
+        # ----------------------------------------------------------------
         volume_col = 'Volume Sales'
         if volume_col not in df.columns:
             df[volume_col] = np.nan
@@ -244,54 +494,61 @@ class ElasticityDataPrep:
             if 'Retailer' not in df.columns:
                 raise ValueError(
                     "Volume Sales is missing and no Retailer column is present to apply a volume-sales factor. "
-                    "Provide 'Volume Sales' in the extract or include a Retailer column + volume_sales_factor_by_retailer config."
+                    "Provide 'Volume Sales' in the extract or include a Retailer column + "
+                    "volume_sales_factor_by_retailer config."
                 )
 
-            def _norm(s: str) -> str:
-                return (
-                    str(s)
-                    .lower()
-                    .replace("'", "")
-                    .replace("’", "")
-                    .replace(".", "")
-                    .replace("-", " ")
-                    .replace("&", "and")
-                    .strip()
-                )
-
-            factors_by_norm = {_norm(k): float(v) for k, v in (self.config.volume_sales_factor_by_retailer or {}).items()}
+            factors_by_norm = {
+                self._norm_retailer(k): float(v)
+                for k, v in (self.config.volume_sales_factor_by_retailer or {}).items()
+            }
 
             for retailer in df.loc[missing_volume_mask, 'Retailer'].dropna().unique().tolist():
-                factor = factors_by_norm.get(_norm(retailer))
+                factor = factors_by_norm.get(self._norm_retailer(retailer))
                 if factor is None:
                     raise ValueError(
                         f"Missing '{volume_col}' for retailer '{retailer}', and no factor was provided in "
                         "PrepConfig.volume_sales_factor_by_retailer.\n\n"
                         "Fix options:\n"
-                        "  1) Include 'Volume Sales' in the Circana extract, or\n"
-                        f"  2) Provide a constant factor for this retailer, e.g. volume_sales_factor_by_retailer: {{'{retailer}': 2.0}}"
+                        "  1) Include 'Volume Sales' in the extract, or\n"
+                        f"  2) Provide a constant factor, e.g. volume_sales_factor_by_retailer: "
+                        f"{{'{retailer}': 2.0}}"
                     )
                 rmask = (df['Retailer'] == retailer) & missing_volume_mask
-                df.loc[rmask, volume_col] = df.loc[rmask, 'Unit Sales'] * factor
+                df.loc[rmask, volume_col] = df.loc[rmask, 'Unit Sales'].astype(float) * factor
+                # Use plain "x" rather than the multiplication sign to avoid Windows console encoding issues.
+                self.logger.info(f"    {retailer}: Volume Sales computed as Unit Sales x {factor}")
 
             # Final strict check
             if df[volume_col].isna().any():
                 missing_retailers = df.loc[df[volume_col].isna(), 'Retailer'].dropna().unique().tolist()
                 raise ValueError(
-                    f"'{volume_col}' is still missing after applying factors for retailers: {missing_retailers}. "
-                    "Provide 'Volume Sales' in the extract or add missing factors in volume_sales_factor_by_retailer."
+                    f"'{volume_col}' is still missing after applying factors for retailers: "
+                    f"{missing_retailers}. Provide 'Volume Sales' in the extract or add missing "
+                    "factors in volume_sales_factor_by_retailer."
                 )
 
-        # V2: Base price columns (if available)
-        # Circana often provides Base Dollar Sales / Base Unit Sales (everyday/base sales).
-        base_dollars_col = 'Base Dollar Sales'
-        base_units_col = 'Base Unit Sales'
-        if base_dollars_col in df.columns and base_units_col in df.columns:
-            # Avoid divide-by-zero; undefined base price becomes NaN and is handled downstream.
-            denom = df[base_units_col].replace(0, np.nan)
-            df['Base_Avg_Price'] = df[base_dollars_col] / denom
-        
+        # ----------------------------------------------------------------
+        # Base price (per-retailer calculation)
+        # ----------------------------------------------------------------
+        if self.config.separate_base_promo:
+            if 'Retailer' in df.columns:
+                base_parts = []
+                for retailer in df['Retailer'].unique():
+                    mask = df['Retailer'] == retailer
+                    retailer_df = df.loc[mask]
+                    base_prices = self._compute_base_price_for_retailer(retailer_df, retailer)
+                    base_parts.append(pd.Series(base_prices.values, index=retailer_df.index))
+                df['Base_Avg_Price'] = pd.concat(base_parts)
+            else:
+                # Legacy single-retailer: use Circana base columns if available
+                if 'Base Dollar Sales' in df.columns and 'Base Unit Sales' in df.columns:
+                    denom = df['Base Unit Sales'].replace(0, np.nan)
+                    df['Base_Avg_Price'] = df['Base Dollar Sales'] / denom
+
+        # ----------------------------------------------------------------
         # Promotions
+        # ----------------------------------------------------------------
         if self.config.include_promotions:
             promo_cols = [c for c in [
                 'Unit Sales Any Merch',
@@ -299,28 +556,44 @@ class ElasticityDataPrep:
                 'Unit Sales Display Only',
                 'Unit Sales Feature and Display'
             ] if c in df.columns]
-            
+
             if promo_cols:
                 promo_sales = df[promo_cols].fillna(0).sum(axis=1)
-                df['Promo_Intensity'] = (promo_sales / df['Unit Sales'].fillna(1)).clip(0, 1)
+                df['Promo_Intensity'] = (promo_sales / df['Unit Sales'].fillna(1).astype(float)).clip(0, 1)
             else:
                 df['Promo_Intensity'] = 0.0
-        
+
+        # ----------------------------------------------------------------
         # Drop missing
-        df[volume_col] = df[volume_col].where(df[volume_col] > 0)  # guard against zero/negative
+        # ----------------------------------------------------------------
+        df[volume_col] = df[volume_col].where(df[volume_col].astype(float) > 0)
         df = df.dropna(subset=['Dollar Sales', 'Unit Sales', volume_col, 'Avg_Price'])
-        
+
         return df
-    
+
+    def _apply_retailer_filter(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Apply retailer filter based on config."""
+        if self.config.retailer_filter == 'BJs':
+            return df[df['Retailer'] == "BJ's"]
+        elif self.config.retailer_filter == 'Sams':
+            return df[df['Retailer'] == "Sam's Club"]
+        elif self.config.retailer_filter == 'Costco':
+            return df[df['Retailer'] == "Costco"]
+        return df
+
+    # ========================================================================
+    # FEATURE CREATION
+    # ========================================================================
+
     def _create_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Create all model features"""
-        
+
         # Pivot
         df_wide = self._pivot_to_wide(df)
-        
+
         # Time
         df_wide = self._add_time_features(df_wide)
-        
+
         # Seasonality
         if self.config.include_seasonality:
             df_wide = self._add_seasonal_features(df_wide)
@@ -328,38 +601,47 @@ class ElasticityDataPrep:
         # V2: base vs promo separation (create before logs so we can log-transform base price)
         if self.config.separate_base_promo:
             df_wide = self._add_base_and_promo_depth(df_wide)
-        
+
         # Logs
         if self.config.log_transform_sales:
             df_wide['Log_Volume_Sales_SI'] = np.log(df_wide['Volume_Sales_SI'])
-        
+
         if self.config.log_transform_prices:
             df_wide['Log_Price_SI'] = np.log(df_wide['Price_SI'])
             # Competitor price may be missing for some retailers (handled downstream)
-            df_wide['Log_Price_PL'] = np.log(df_wide['Price_PL'])
+            if 'Price_PL' in df_wide.columns:
+                # Only log where PL price is valid; set to 0.0 where missing
+                df_wide['Log_Price_PL'] = np.where(
+                    df_wide['Price_PL'].notna() & (df_wide['Price_PL'] > 0),
+                    np.log(df_wide['Price_PL']),
+                    0.0
+                )
+            else:
+                df_wide['Log_Price_PL'] = 0.0
+
             if self.config.separate_base_promo and 'Base_Price_SI' in df_wide.columns:
                 df_wide['Log_Base_Price_SI'] = np.log(df_wide['Base_Price_SI'])
-        
+
         # Clean
         df_wide = df_wide.replace([np.inf, -np.inf], np.nan)
-        # Only require outcome and base/own price. Cross-price and promo may be missing for some retailers
-        # and should be handled by model masking (via has_competitor/has_promo indicators).
+        # Only require outcome and base/own price. Cross-price and promo may be missing for
+        # some retailers and should be handled by model masking (via has_competitor/has_promo).
         if self.config.separate_base_promo:
             df_wide = df_wide.dropna(subset=['Log_Volume_Sales_SI', 'Log_Base_Price_SI'])
         else:
             df_wide = df_wide.dropna(subset=['Log_Volume_Sales_SI', 'Log_Price_SI'])
-        
+
         # Missing features
         if self.config.retailers:
             df_wide = self._handle_missing_features(df_wide)
-        
+
         return df_wide
-    
+
     def _pivot_to_wide(self, df: pd.DataFrame) -> pd.DataFrame:
         """Pivot to wide format"""
-        
+
         index_cols = ['Date', 'Retailer'] if self.config.retailer_filter == 'All' else ['Date']
-        
+
         # Sales
         sales = df.pivot_table(
             index=index_cols,
@@ -367,7 +649,7 @@ class ElasticityDataPrep:
             values='Volume Sales',
             aggfunc='sum'
         ).reset_index()
-        
+
         # Prices
         prices = df.pivot_table(
             index=index_cols,
@@ -385,32 +667,32 @@ class ElasticityDataPrep:
                 values='Base_Avg_Price',
                 aggfunc='mean'
             ).reset_index()
-        
+
         # Merge
         wide = sales.merge(prices, on=index_cols, suffixes=('_sales', '_price'))
         if base_prices is not None:
             wide = wide.merge(base_prices, on=index_cols, suffixes=('', '_base_price'))
-        
+
         # Rename
-        wide = wide.rename(columns={
+        rename_map = {
             'Sparkling Ice_sales': 'Volume_Sales_SI',
-            'Private Label_sales': 'Volume_Sales_PL',
             'Sparkling Ice_price': 'Price_SI',
-            'Private Label_price': 'Price_PL'
-        })
+        }
+        # Private Label columns may not exist (e.g., Costco has no PL data)
+        if 'Private Label_sales' in wide.columns:
+            rename_map['Private Label_sales'] = 'Volume_Sales_PL'
+        if 'Private Label_price' in wide.columns:
+            rename_map['Private Label_price'] = 'Price_PL'
+
+        wide = wide.rename(columns=rename_map)
 
         # V2 base-price column (Sparkling Ice only)
-        # After the base_prices merge, Sparkling Ice base price will appear as 'Sparkling Ice'
-        # (since the value column is Base_Avg_Price with columns=Product_Short).
         if base_prices is not None:
             if 'Sparkling Ice' in wide.columns:
                 wide = wide.rename(columns={'Sparkling Ice': 'Base_Price_SI'})
-        
+
         # Promo
         if self.config.include_promotions:
-            # Promo intensity is optional. If Sparkling Ice rows are present but promo columns are absent,
-            # _clean_data() sets Promo_Intensity=0.0. If Sparkling Ice subset is empty for some reason,
-            # fall back to zeros without crashing.
             si = df[df['Product_Short'] == 'Sparkling Ice']
             if 'Promo_Intensity' in df.columns and len(si) > 0:
                 promo = si.pivot_table(
@@ -427,7 +709,7 @@ class ElasticityDataPrep:
                 wide['Promo_Intensity_SI'] = 0.0
             else:
                 wide['Promo_Intensity_SI'] = wide['Promo_Intensity_SI'].fillna(0)
-        
+
         return wide
 
     # ========================================================================
@@ -441,27 +723,35 @@ class ElasticityDataPrep:
         - Promo_Depth_SI: relative price change vs base price (negative when discounted)
 
         Notes:
-        - If Circana base columns are missing, we estimate a proxy base price from Avg_Price.
-        - If Base_Price_SI is undefined for some weeks (e.g., Base Unit Sales = 0), we impute it.
+        - If base columns are missing, we estimate a proxy base price from Avg_Price.
+        - If Base_Price_SI is undefined for some weeks, we impute it.
         """
         df = df_wide.copy()
 
         # Ensure we have some base price signal
         if 'Base_Price_SI' not in df.columns or df['Base_Price_SI'].isna().all():
-            # Proxy: rolling max of observed average price (common approximation for regular/base price)
-            # (computed per retailer if present; otherwise overall)
-            self.logger.warning("  ⚠️ Base sales columns not available (or Base_Price_SI missing). Using proxy base price from Avg_Price.")
+            # Proxy: rolling max of observed average price (common approximation)
+            self.logger.warning(
+                "  ⚠️ Base sales columns not available (or Base_Price_SI missing). "
+                "Using proxy base price from Avg_Price."
+            )
             df['Base_Price_SI'] = np.nan
 
             if 'Retailer' in df.columns:
                 df = df.sort_values(['Retailer', 'Date'])
                 df['Base_Price_SI'] = (
                     df.groupby('Retailer')['Price_SI']
-                    .transform(lambda s: s.rolling(self.config.base_price_proxy_window, min_periods=1).max())
+                    .transform(
+                        lambda s: s.rolling(
+                            self.config.base_price_proxy_window, min_periods=1
+                        ).max()
+                    )
                 )
             else:
                 df = df.sort_values('Date')
-                df['Base_Price_SI'] = df['Price_SI'].rolling(self.config.base_price_proxy_window, min_periods=1).max()
+                df['Base_Price_SI'] = df['Price_SI'].rolling(
+                    self.config.base_price_proxy_window, min_periods=1
+                ).max()
 
         # Impute missing/invalid base price values (forward-fill then back-fill)
         df['Base_Price_SI'] = df['Base_Price_SI'].where(df['Base_Price_SI'] > 0)
@@ -477,10 +767,11 @@ class ElasticityDataPrep:
         base_missing_after = float(df['Base_Price_SI'].isna().mean())
 
         # Guardrail warnings
-        imputed_rate = base_missing_before  # approximate: fraction that needed fill (missing before fill)
+        imputed_rate = base_missing_before
         if imputed_rate > self.config.base_price_imputed_warn_threshold:
             self.logger.warning(
-                f"  ⚠️ High base-price imputation rate: {imputed_rate:.1%} of weeks lacked base price before imputation."
+                f"  ⚠️ High base-price imputation rate: {imputed_rate:.1%} of weeks "
+                "lacked base price before imputation."
             )
         if base_missing_after > 0:
             raise ValueError(
@@ -489,67 +780,55 @@ class ElasticityDataPrep:
             )
 
         # Promotional depth as relative price change vs base (negative when discounted)
-        # promo_depth = (AvgPrice - BasePrice) / BasePrice = (Avg/Base) - 1
         df['Promo_Depth_SI'] = (df['Price_SI'] / df['Base_Price_SI']) - 1.0
         df['Promo_Depth_SI'] = df['Promo_Depth_SI'].replace([np.inf, -np.inf], np.nan).fillna(0.0)
 
-        # Clip to reasonable range: discounts down to -80%, premiums up to +50% (rare)
+        # Clip to reasonable range
         df['Promo_Depth_SI'] = df['Promo_Depth_SI'].clip(-0.80, 0.50)
 
         return df
-    
+
     def _add_time_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add time features"""
-        
+
         df = df.sort_values('Date').reset_index(drop=True)
-        
+
         if self.config.include_time_trend:
             min_date = df['Date'].min()
             df['Week_Number'] = ((df['Date'] - min_date).dt.days / 7).astype(int)
-        
+
         return df
-    
+
     def _add_seasonal_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add seasonal dummies"""
-        
+
         df['Month'] = df['Date'].dt.month
         df['Spring'] = df['Month'].isin([3, 4, 5]).astype(int)
         df['Summer'] = df['Month'].isin([6, 7, 8]).astype(int)
         df['Fall'] = df['Month'].isin([9, 10, 11]).astype(int)
-        
+
         return df
-    
+
     def _handle_missing_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Handle retailer-specific missing features"""
-        
+
         if 'Retailer' not in df.columns:
             return df
 
-        def _norm(s: str) -> str:
-            # normalize retailer labels to match config keys robustly
-            return (
-                str(s)
-                .lower()
-                .replace("'", "")
-                .replace("’", "")
-                .replace(".", "")
-                .replace("-", " ")
-                .replace("&", "and")
-                .strip()
-            )
-
         # Normalize config keys once
-        cfg_by_norm = {_norm(k): v for k, v in (self.config.retailers or {}).items()}
+        cfg_by_norm = {
+            self._norm_retailer(k): v
+            for k, v in (self.config.retailers or {}).items()
+        }
 
         # Default availability flags to "present"; retailer configs can override.
-        # These flags allow the model to include/exclude terms without introducing NaNs.
         if 'has_promo' not in df.columns:
             df['has_promo'] = 1
         if 'has_competitor' not in df.columns:
             df['has_competitor'] = 1
 
         for retailer_value in df['Retailer'].dropna().unique():
-            cfg = cfg_by_norm.get(_norm(retailer_value))
+            cfg = cfg_by_norm.get(self._norm_retailer(retailer_value))
             if cfg is None:
                 # common aliases
                 aliases = {
@@ -557,11 +836,10 @@ class ElasticityDataPrep:
                     "sams": ["sams", "sams club", "sams club wholesale", "sams club inc"],
                     "costco": ["costco", "costco wholesale", "costco wholesale corp"],
                 }
-                norm_val = _norm(retailer_value)
+                norm_val = self._norm_retailer(retailer_value)
                 match_key = None
                 for canonical, a_list in aliases.items():
                     if norm_val in a_list:
-                        # find first config entry that matches any alias string
                         for alias in a_list:
                             if alias in cfg_by_norm:
                                 match_key = alias
@@ -572,14 +850,11 @@ class ElasticityDataPrep:
                     cfg = cfg_by_norm.get(match_key)
 
             if cfg is None:
-                # no retailer-specific config; default to "features present"
                 cfg = {}
 
             mask = df['Retailer'] == retailer_value
 
             if not cfg.get('has_promo', True):
-                # Use safe numeric default + availability indicator.
-                # The model masks promo effect via `has_promo`.
                 if 'Promo_Intensity_SI' in df.columns:
                     df.loc[mask, 'Promo_Intensity_SI'] = 0.0
                 if 'Promo_Depth_SI' in df.columns:
@@ -589,8 +864,6 @@ class ElasticityDataPrep:
                 df.loc[mask, 'has_promo'] = 1
 
             if not cfg.get('has_competitor', True):
-                # Use safe numeric default + availability indicator.
-                # The model masks cross-price effect via `has_competitor`.
                 if 'Price_PL' in df.columns:
                     df.loc[mask, 'Price_PL'] = 0.0
                 if 'Log_Price_PL' in df.columns:
@@ -598,12 +871,12 @@ class ElasticityDataPrep:
                 df.loc[mask, 'has_competitor'] = 0
             else:
                 df.loc[mask, 'has_competitor'] = 1
-        
+
         return df
-    
+
     def _validate_output(self, df: pd.DataFrame):
         """Validate output"""
-        
+
         required = ['Date', 'Log_Volume_Sales_SI']
 
         # V2 vs V1 price features
@@ -611,38 +884,38 @@ class ElasticityDataPrep:
             required.extend(['Log_Base_Price_SI', 'Promo_Depth_SI'])
         else:
             required.append('Log_Price_SI')
-        
+
         if self.config.include_promotions:
             required.append('Promo_Intensity_SI')
-        
+
         if self.config.include_seasonality:
             required.extend(['Spring', 'Summer', 'Fall'])
-        
+
         if self.config.retailer_filter == 'All':
             required.append('Retailer')
             if self.config.retailers:
                 required.extend(['has_promo', 'has_competitor'])
 
-        # Cross price is generally required, but allow it to be missing for some retailers
-        # if retailer-specific configuration indicates missing competitor data.
+        # Cross price: require Log_Price_PL column to exist (may be 0.0 for some retailers)
         if 'Log_Price_PL' in df.columns:
             required.append('Log_Price_PL')
         else:
-            # if not present at all, that is a structural problem
             raise ValueError("Missing column: Log_Price_PL (competitor price log).")
-        
+
         missing = set(required) - set(df.columns)
         if missing:
             raise ValueError(f"Missing columns: {missing}")
-        
+
         if len(df) < 30:
             raise ValueError(f"Insufficient data: {len(df)} rows")
-    
+
     # ========================================================================
     # FEATURE ENGINEERING
     # ========================================================================
-    
-    def add_interaction_term(self, df: pd.DataFrame, var1: str, var2: str, name: str = None) -> pd.DataFrame:
+
+    def add_interaction_term(
+        self, df: pd.DataFrame, var1: str, var2: str, name: str = None
+    ) -> pd.DataFrame:
         """Add interaction term"""
         if name is None:
             name = f"{var1}_x_{var2}"
@@ -650,8 +923,10 @@ class ElasticityDataPrep:
         if self.config.verbose:
             self.logger.info(f"  Added interaction: {name}")
         return df
-    
-    def add_lagged_feature(self, df: pd.DataFrame, var: str, lags: List[int], group_by: List[str] = None) -> pd.DataFrame:
+
+    def add_lagged_feature(
+        self, df: pd.DataFrame, var: str, lags: List[int], group_by: List[str] = None
+    ) -> pd.DataFrame:
         """Add lagged features"""
         df = df.sort_values('Date')
         for lag in lags:
@@ -663,8 +938,10 @@ class ElasticityDataPrep:
             if self.config.verbose:
                 self.logger.info(f"  Added lag: {lag_name}")
         return df
-    
-    def add_moving_average(self, df: pd.DataFrame, var: str, windows: List[int], group_by: List[str] = None) -> pd.DataFrame:
+
+    def add_moving_average(
+        self, df: pd.DataFrame, var: str, windows: List[int], group_by: List[str] = None
+    ) -> pd.DataFrame:
         """Add moving averages"""
         df = df.sort_values('Date')
         for window in windows:
@@ -678,24 +955,24 @@ class ElasticityDataPrep:
             if self.config.verbose:
                 self.logger.info(f"  Added MA: {ma_name}")
         return df
-    
+
     def add_custom_feature(self, df: pd.DataFrame, name: str, formula) -> pd.DataFrame:
         """Add custom feature"""
         df[name] = formula(df)
         if self.config.verbose:
             self.logger.info(f"  Added custom: {name}")
         return df
-    
+
     # ========================================================================
     # UTILITIES
     # ========================================================================
-    
+
     def get_summary_stats(self) -> pd.DataFrame:
         """Get summary statistics"""
         if self.final_data is None:
             raise ValueError("No data. Run transform() first.")
         return self.final_data.describe()
-    
+
     def export_csv(self, path: str):
         """Export to CSV"""
         if self.final_data is None:

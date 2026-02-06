@@ -28,7 +28,7 @@ Update the pipeline so the model uses **`Volume Sales`** as the dependent variab
 - `bayesian_models.py`
   - Replace `y = data['Log_Unit_Sales_SI']` with `y = data['Log_Volume_Sales_SI']` (and keep everything else the same).
   - Ensure any downstream references to unit-sales outcome are updated consistently.
-- `README.md` and `architecture.md`
+- `README.md` and `help_documents/architecture.md`
   - Update the “dependent variable” description to reflect Volume Sales.
   - Document the strict fallback rule and how to configure the factor.
 

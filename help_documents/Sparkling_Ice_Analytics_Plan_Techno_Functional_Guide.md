@@ -133,11 +133,13 @@ Both models are **log-demand** models so elasticities are directly interpretable
 
 ## 5) Data inputs: raw columns we use and features we construct
 
-This section is the “contract” between the Circana export and the model.
+This section is the “contract” between the raw retailer exports and the model.
 
-### 5.1 Raw Circana columns actually used (minimum set)
+Important: the pipeline supports **heterogeneous retailer sources** via a YAML-driven `retailer_data_contracts` block (see `config_template.yaml`). That’s what allows BJ’s/Sam’s (Circana) and Costco (CRX) to land in the same model-ready schema with **no hardcoded retailer logic**.
 
-From each retailer CSV, the pipeline uses:
+### 5.1 Raw columns actually used (minimum set)
+
+From each retailer CSV, the pipeline uses (exact column names can vary by retailer; the contract defines the mapping):
 
 - `Product` (to identify Sparkling Ice vs Private Label aggregates)
 - `Time` (weekly date field)
@@ -223,10 +225,10 @@ We separate:
 - **Base Price Elasticity**: coefficient on `Log(Base_Price)`  
 - **Promotional Elasticity**: coefficient on `Promo_Depth`
 
-Base price and promo depth are computed directly from the “total vs base” sales fields:
+Base price and promo depth are computed directly from the “total vs base” sales fields (for Circana-style extracts), or equivalent fields (for Costco CRX):
 
 - Base Price = `Base Dollar Sales / Base Unit Sales`  
-- Average Paid Price = `Dollar Sales / Unit Sales`  
+- Average Paid Price = `Dollar Sales / Unit Sales` (Circana) **or** `Avg Net Price` (Costco CRX)  
 - Promo Depth = `(AvgPrice / BasePrice) - 1`
 
 This is both **interpretable** and **identifiable** with weekly variation.
@@ -342,7 +344,7 @@ If you want the code-level view, start here:
 - `bayesian_models.py`: pooled + hierarchical PyMC models; dual-elasticity selection logic
 - `visualizations.py`: plots + HTML report generation
 - `run_analysis.py`: CLI orchestration
-- `architecture.md`: call graphs, data contracts, and end-to-end flow
+- `help_documents/architecture.md`: call graphs, data contracts, and end-to-end flow
 
 ### Operational scripts
 

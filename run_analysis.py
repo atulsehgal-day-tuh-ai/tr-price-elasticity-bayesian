@@ -271,11 +271,14 @@ def run_pipeline(config: dict, logger):
         include_promotions=config['data']['include_promotions'],
         include_time_trend=config['data']['include_time_trend'],
         volume_sales_factor_by_retailer=_get_volume_sales_factor_by_retailer(config),
+        retailer_data_contracts=config['data'].get('retailer_data_contracts'),
         separate_base_promo=config['data'].get('separate_base_promo', True),
         log_transform_sales=config['data']['log_transform_sales'],
         log_transform_prices=config['data']['log_transform_prices'],
         base_price_proxy_window=config['data'].get('base_price_proxy_window', 8),
         base_price_imputed_warn_threshold=config['data'].get('base_price_imputed_warn_threshold', 0.30),
+        brand_filters=(config['data'].get('brand_filters') or PrepConfig().brand_filters),
+        enable_brand_fuzzy_match=bool(config['data'].get('enable_brand_fuzzy_match', True)),
         retailers=config['data'].get('retailers'),
         verbose=_get_verbose_flag(config, default=True)
     )

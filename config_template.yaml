@@ -6,10 +6,10 @@ data:
   # File paths
   bjs_path: "data/bjs.csv"
   sams_path: "data/sams.csv"
-  costco_path: null  # Optional: add path if you have Costco data
+  costco_path: "data/costco.csv"  # Optional: set to null if no Costco data
   
   # Retailer filter
-  # Options: 'All' (keep separate), 'Overall' (combine), 'BJs', 'Sams'
+  # Options: 'All' (keep separate), 'Overall' (combine), 'BJs', 'Sams', 'Costco'
   retailer_filter: "All"
   
   # Features to include
@@ -32,13 +32,19 @@ data:
   base_price_imputed_warn_threshold: 0.30 # warn if >30% weeks required imputation
 
   # Dependent variable rule: always model Volume Sales.
-  # If a retailer file is missing `Volume Sales`, compute it as Unit Sales × factor (constant per retailer).
+  # If a retailer file is missing `Volume Sales`, compute it as Unit Sales × factor.
   # If neither `Volume Sales` nor a factor is available, data prep fails fast.
-  # Example: Costco sometimes arrives without `Volume Sales`, but can be derived from Unit Sales via a constant factor.
   volume_sales_factor_by_retailer:
-    Costco: 2.0  # adjust if your Circana extract uses a different Unit→Volume relationship
-  
-  # Retailer-specific configurations (for missing data handling)
+    Costco: 2.0  # 24pk × 17oz = 408oz per unit; 408/204 = 2.0 volume units per case
+
+  # Brand filters for exact-match (legacy). Fuzzy matching kicks in if these don't match.
+  brand_filters:
+    - "Total Sparkling Ice Core Brand"
+    - "PRIVATE LABEL-BOTTLED WATER-SELTZER/SPARKLING/MINERAL WATER"
+
+  enable_brand_fuzzy_match: true
+
+  # Retailer-specific feature availability (for model masking via has_promo / has_competitor)
   retailers:
     BJs:
       has_promo: true
@@ -46,10 +52,100 @@ data:
     Sams:
       has_promo: true
       has_competitor: true
-    # Uncomment when adding Costco
-    # Costco:
-    #   has_promo: false      # If Costco doesn't have promo data
-    #   has_competitor: true
+    Costco:
+      has_promo: true          # Costco HAS promotional data (Non Promoted / Promoted splits)
+      has_competitor: false     # Costco has NO Private Label data in CRX extract
+
+  # ============================================================================
+  # RETAILER DATA CONTRACTS
+  # ============================================================================
+  # Per-retailer rules for loading, parsing, and transforming raw CSV files.
+  # This is what allows data_prep.py to handle heterogeneous data sources
+  # (Circana, Costco CRX, etc.) with ZERO hardcoded retailer logic.
+  #
+  # To add a new retailer: just add a new block here. No code changes needed.
+  #
+  # Schema per retailer:
+  #   skiprows:              Number of header rows to skip when reading CSV
+  #   product_column:        Column name containing product identifiers
+  #   brand_filter:          Substring for fuzzy-matching Sparkling Ice (lowercase)
+  #   competitor_filter:     Substring for fuzzy-matching Private Label (null if none)
+  #   date_column:           Column name containing the date/time field
+  #   date_prefix:           (Option A) Prefix string to strip before parsing
+  #   date_regex:            (Option B) Regex to extract date string (use capture group)
+  #   date_format:           strftime format for the extracted/stripped date string
+  #   price_calc:
+  #     avg_price:           How to compute average price paid
+  #                          - "ColA / ColB" (division formula)
+  #                          - "ColumnName" (direct column reference)
+  #     base_price:          How to compute base/regular price (same syntax)
+  #     base_price_fallback: Column to use when primary base price is unreliable
+  #     base_price_min_units: Threshold below which fallback is triggered
+  #   volume_column:         Column name for volume sales (null if needs computation)
+  # ============================================================================
+
+  retailer_data_contracts:
+
+    # --------------------------------------------------
+    # BJ's Wholesale Club (Circana data)
+    # --------------------------------------------------
+    BJs:
+      skiprows: 2
+      product_column: "Product"
+      brand_filter: "sparkling ice"          # fuzzy substring match (lowercase)
+      competitor_filter: "private label"     # fuzzy substring match (lowercase)
+      date_column: "Time"
+      date_prefix: "Week Ending "            # strip this prefix, then parse
+      date_format: "%m-%d-%y"
+      price_calc:
+        avg_price: "Dollar Sales / Unit Sales"
+        base_price: "Base Dollar Sales / Base Unit Sales"
+      volume_column: "Volume Sales"          # direct column exists in Circana
+
+    # --------------------------------------------------
+    # Sam's Club (Circana data)
+    # --------------------------------------------------
+    Sams:
+      skiprows: 2
+      product_column: "Product"
+      brand_filter: "sparkling ice"
+      competitor_filter: "private label"
+      date_column: "Time"
+      date_prefix: "Week Ending "
+      date_format: "%m-%d-%y"
+      price_calc:
+        avg_price: "Dollar Sales / Unit Sales"
+        base_price: "Base Dollar Sales / Base Unit Sales"
+      volume_column: "Volume Sales"
+
+    # --------------------------------------------------
+    # Costco (CRX data — different schema than Circana)
+    # --------------------------------------------------
+    # Key differences documented in Costco_Data_Integration_Contract.md:
+    #   - 1 header row (not 2)
+    #   - Product column is called "Item"
+    #   - No Private Label data
+    #   - No Volume Sales column (computed via volume_sales_factor_by_retailer)
+    #   - No Base Dollar Sales / Base Unit Sales columns
+    #   - Base price = Non Promoted Dollars / Non Promoted Units
+    #   - Avg price = Avg Net Price (NOT Dollar Sales / Unit Sales, which is shelf price)
+    #   - Different date format: "1 week ending 01-08-2023"
+    # --------------------------------------------------
+    Costco:
+      skiprows: 1
+      product_column: "Item"
+      brand_filter: "sparkling ice core"     # "core" distinguishes brand aggregate from individual UPCs
+      competitor_filter: null                 # no Private Label data in Costco CRX
+      date_column: "Time"
+      date_regex: "ending (\\d{2}-\\d{2}-\\d{4})"  # extract date from "1 week ending 01-08-2023"
+      date_format: "%m-%d-%Y"                # 4-digit year (vs 2-digit for Circana)
+      price_calc:
+        avg_price: "Avg Net Price"           # CRITICAL: NOT "Dollar Sales / Unit Sales" (that gives shelf price)
+        base_price: "Non Promoted Dollars / Non Promoted Units"
+        base_price_fallback: "Average Price per Unit"   # shelf/list price — used when NP Units < threshold
+        base_price_min_units: 500            # fallback triggered when Non Promoted Units < 500
+      volume_column: null                    # computed via volume_sales_factor_by_retailer (Unit Sales × 2.0)
+
 
 # Model Configuration
 model:
@@ -81,7 +177,6 @@ model:
 # Output Configuration
 output:
   # Output directory
-  # NOTE: `run_analysis.py` expects `output_dir` (kept compatible with older `directory` key too)
   output_dir: "./results"
   
   # What to generate
@@ -108,9 +203,8 @@ advanced:
   drop_missing: true
   
   # Logging
-  # (Deprecated) kept for backward compatibility; prefer `logging:` above
   verbose: true
-  log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  log_level: "INFO"
   
   # Performance
   parallel: true
