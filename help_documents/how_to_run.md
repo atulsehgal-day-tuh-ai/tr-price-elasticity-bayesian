@@ -100,6 +100,95 @@ ls
 
 ---
 
+## 2.1 (Optional but recommended) Enable `git push` from the VM (GitHub SSH key)
+
+If you plan to edit code/docs on the VM and push back to GitHub, you need the VM to authenticate to GitHub.
+
+### Why you might need this
+
+If your repo remote looks like an HTTPS URL (example):
+
+- `https://github.com/<org-or-user>/<repo>.git`
+
+…then `git push` usually requires credentials. On a headless VM, that often fails with:
+
+- `could not read Username for 'https://github.com': No such device or address`
+
+The most reliable fix is to use **SSH** with a key.
+
+### Step A — Generate an SSH key on the VM (one-time)
+
+Run on the VM:
+
+```bash
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+ssh-keygen -t ed25519 -C "vm-mcmc-bayesian" -f ~/.ssh/id_ed25519 -N ""
+```
+
+This creates:
+
+- `~/.ssh/id_ed25519` (private key — keep secret)
+- `~/.ssh/id_ed25519.pub` (public key — safe to share)
+
+### Step B — Add the VM’s *public key* to GitHub (one-time)
+
+1. On the VM, copy the public key text:
+
+```bash
+cat ~/.ssh/id_ed25519.pub
+```
+
+2. In GitHub (web UI):
+
+- Profile icon (top-right) → **Settings**
+- **SSH and GPG keys**
+- **New SSH key**
+
+3. Fill the form as follows:
+
+- **Title**: something descriptive like `vm-mcmc-bayesian (Azure VM)`
+- **Key type**: **Authentication Key**
+- **Key**: paste the *entire* `ssh-ed25519 ...` line you copied from the VM
+
+4. Click **Add SSH key**
+
+> Alternative (repo-scoped): Repo → **Settings** → **Deploy keys** → **Add deploy key** → paste the same key and **check “Allow write access”** (required for push).
+
+### Step C — Switch your git remote to SSH and test
+
+Run on the VM:
+
+```bash
+ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts
+chmod 600 ~/.ssh/known_hosts
+```
+
+Switch remote (example):
+
+```bash
+git remote set-url origin git@github.com:<org-or-user>/<repo>.git
+git remote -v
+```
+
+Test auth:
+
+```bash
+ssh -T git@github.com
+```
+
+Expected:
+
+- A message like “You’ve successfully authenticated…”
+
+Finally, push:
+
+```bash
+git push
+```
+
+---
+
 ## 3) Create a virtual environment + install dependencies
 
 Why you want a venv:

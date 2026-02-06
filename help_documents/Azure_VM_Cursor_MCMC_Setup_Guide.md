@@ -252,6 +252,71 @@ git clone https://github.com/<your-username>/<your-repo>.git
 
 If it's a private repo, you'll need to authenticate with a [GitHub Personal Access Token](https://github.com/settings/tokens) as the password.
 
+### Step 4.1b (Recommended): Enable `git push` from the VM (GitHub SSH key)
+
+If you plan to edit code/docs on the VM and push back to GitHub, HTTPS auth can be annoying on a headless VM (it may fail to prompt for credentials).
+
+The most reliable approach is: **use SSH + an SSH key generated on the VM**.
+
+#### 4.1b.1 Generate an SSH key on the VM (one-time)
+
+Run on the VM:
+
+```bash
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+ssh-keygen -t ed25519 -C "azure-vm" -f ~/.ssh/id_ed25519 -N ""
+```
+
+#### 4.1b.2 Add the VM public key to GitHub (one-time)
+
+1. Print/copy the public key from the VM:
+
+```bash
+cat ~/.ssh/id_ed25519.pub
+```
+
+2. In GitHub:
+
+- Profile icon (top-right) → **Settings**
+- **SSH and GPG keys**
+- **New SSH key**
+
+Fill the form:
+
+- **Title**: e.g. `vm-mcmc-bayesian (Azure VM)`
+- **Key type**: **Authentication Key**
+- **Key**: paste the *entire* `ssh-ed25519 ...` line from the VM
+
+Then click **Add SSH key**.
+
+> Alternative (repo-scoped): Repo → **Settings** → **Deploy keys** → **Add deploy key** → paste the same key and check **Allow write access** (required for pushing).
+
+#### 4.1b.3 Switch the repo remote to SSH + test
+
+In your repo folder on the VM:
+
+```bash
+cd /home/azureuser/<your-repo>
+ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts
+chmod 600 ~/.ssh/known_hosts
+```
+
+Switch `origin` from HTTPS to SSH:
+
+```bash
+git remote set-url origin git@github.com:<your-username>/<your-repo>.git
+git remote -v
+```
+
+Test:
+
+```bash
+ssh -T git@github.com
+```
+
+If that succeeds, `git push` should work normally.
+
 ### Step 4.2: Verify Python
 
 Ubuntu 24.04 comes with Python 3.12 pre-installed:
