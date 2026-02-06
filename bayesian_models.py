@@ -250,6 +250,19 @@ class BayesianResults:
                     ci_lower=np.percentile(samples, 2.5),
                     ci_upper=np.percentile(samples, 97.5)
                 )
+
+        # Time trend
+        if 'beta_time' in self.trace.posterior:
+            samples = self.trace.posterior['beta_time'].values.flatten()
+            self.beta_time_trend = PosteriorSummary(
+                mean=samples.mean(),
+                median=np.median(samples),
+                std=samples.std(),
+                ci_lower=np.percentile(samples, 2.5),
+                ci_upper=np.percentile(samples, 97.5)
+            )
+        else:
+            self.beta_time_trend = None
     
     def _check_convergence(self):
         """Check MCMC convergence"""
@@ -353,6 +366,11 @@ class BayesianResults:
                 lines.append(f"  {season}: {summary}")
                 lift = (np.exp(summary.mean) - 1) * 100
                 lines.append(f"    → {lift:+.1f}% vs Winter")
+
+        if self.beta_time_trend is not None:
+            lines.append(f"\nTime Trend: {self.beta_time_trend}")
+            annual_pct = (np.exp(self.beta_time_trend.mean * 52) - 1) * 100
+            lines.append(f"  → {annual_pct:+.1f}% annualized volume change (holding price constant)")
         
         lines.append("\n" + "="*80)
         
@@ -940,6 +958,7 @@ class HierarchicalBayesianModel:
         X_spring = data['Spring'].values if 'Spring' in data else None
         X_summer = data['Summer'].values if 'Summer' in data else None
         X_fall = data['Fall'].values if 'Fall' in data else None
+        X_time = data['Week_Number'].values if 'Week_Number' in data else None
 
         # Safety: ensure no NaNs propagate into the linear predictor
         X_cross = np.nan_to_num(X_cross, nan=0.0)
@@ -1051,6 +1070,12 @@ class HierarchicalBayesianModel:
                                      mu=self.priors['beta_fall']['mu'],
                                      sigma=self.priors['beta_fall']['sigma'])
                 mu += beta_spring * X_spring + beta_summer * X_summer + beta_fall * X_fall
+            
+            if X_time is not None:
+                beta_time = pm.Normal('beta_time',
+                                     mu=self.priors['beta_time']['mu'],
+                                     sigma=self.priors['beta_time']['sigma'])
+                mu += beta_time * X_time
             
             # Likelihood
             sigma = pm.HalfNormal('sigma', sigma=self.priors['sigma']['sigma'])

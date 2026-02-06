@@ -25,6 +25,11 @@ You’ll typically run one of these:
   - `python examples/example_01_simple.py`
   - `python examples/example_02_hierarchical.py`
   - `python examples/example_05_base_vs_promo.py`
+
+**Important note (recent changes):**
+
+- Examples **01–05** were validated earlier in development, but after recent pipeline/model updates (Costco schema hardening, Volume Sales DV strictness, stable `Week_Number`, and the `beta_time` trend feature), they **may not run smoothly without small touch-ups**.
+- If you want a single “trust but verify” validation run without re-running everything, use **Example 06** (added specifically for this purpose).
 - **The pipeline CLI** (real “production style” runs):
   - `python run_analysis.py --config my_config.yaml --dual-elasticity`
   - or `python run_analysis.py --bjs data/bjs.csv --sams data/sams.csv --output ./results`
@@ -551,6 +556,28 @@ python examples/example_05_base_vs_promo.py
 
 - The results should include both **Base Price Elasticity** and **Promotional Elasticity**.
 - If a report is generated, confirm it includes a “base vs promo” comparison section/plot.
+
+### 6.6 Example 06 — smoke test (Costco + beta_time + HTML report)
+
+This is the recommended **single** validation run after recent changes. It is designed to confirm, end-to-end, that:
+
+- **Costco CRX (heterogeneous schema)** still loads correctly (via `retailer_data_contracts`)
+- **Volume Sales DV** rules still hold (including Costco volume factor fallback if needed)
+- **Time trend** is wired correctly (`Week_Number` → `beta_time` → `beta_time_trend`)
+- **HTML report generation** works and includes a time trend visualization (`time_trend_plot.png`)
+
+Run:
+
+```bash
+python examples/example_06_smoke_beta_time_costco.py
+```
+
+What to look for (quick):
+
+- It prints a prepared dataset shape and a retailer list that includes **Costco**.
+- It prints `beta_time` mean and an annualized interpretation.
+- It creates `output_example_06/smoke_beta_time_costco_report.html`.
+- It creates `output_example_06/time_trend_plot.png`.
 
 ---
 

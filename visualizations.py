@@ -68,6 +68,9 @@ def plot_trace(results, output_path: Optional[str] = None, figsize=(14, 10)):
     
     if 'beta_spring' in results.trace.posterior:
         var_names.extend(['beta_spring', 'beta_summer', 'beta_fall'])
+
+    if 'beta_time' in results.trace.posterior:
+        var_names.append('beta_time')
     
     # Create trace plot using ArviZ
     axes = az.plot_trace(
@@ -141,6 +144,10 @@ def plot_posteriors(results, output_path: Optional[str] = None, figsize=(14, 10)
     for season, summary in results.seasonal_effects.items():
         params.append((f'beta_{season.lower()}', summary))
         titles.append(f'{season} Effect')
+
+    if getattr(results, 'beta_time_trend', None) is not None:
+        params.append(('beta_time', results.beta_time_trend))
+        titles.append('Time Trend (weekly)')
     
     # Create subplots
     n_params = len(params)
@@ -274,6 +281,127 @@ def plot_seasonal_patterns(results, data, output_path: Optional[str] = None, fig
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         print(f"Seasonal plot saved to {output_path}")
     
+    return fig
+
+
+# ============================================================================
+# TIME TREND
+# ============================================================================
+
+def plot_time_trend(results, data, output_path: Optional[str] = None, figsize=(14, 8)):
+    """
+    Plot time trend decomposition
+
+    Shows:
+    - Top: Observed volume sales over time by retailer with fitted trend line
+    - Bottom: beta_time posterior distribution with annualized interpretation
+
+    Parameters:
+    ----------
+    results : BayesianResults
+        Results object (must have beta_time_trend)
+
+    data : pd.DataFrame
+        Original data with Date, Volume_Sales_SI, Retailer columns
+
+    output_path : str, optional
+        Path to save plot
+
+    Returns:
+    -------
+    matplotlib.figure.Figure or None
+    """
+
+    if getattr(results, 'beta_time_trend', None) is None:
+        print("Time trend not available - skipping time trend plot")
+        return None
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=figsize,
+                                    gridspec_kw={'height_ratios': [2, 1]})
+
+    # ------------------------------------------------------------------
+    # Top panel: observed volume over time with trend overlay
+    # ------------------------------------------------------------------
+    sales_col = None
+    if 'Volume_Sales_SI' in data.columns:
+        sales_col = 'Volume_Sales_SI'
+    elif 'Unit_Sales_SI' in data.columns:
+        sales_col = 'Unit_Sales_SI'
+
+    if 'Date' in data.columns and sales_col is not None:
+        plot_data = data.copy()
+        plot_data['Date'] = pd.to_datetime(plot_data['Date'])
+
+        if 'Retailer' in plot_data.columns:
+            retailers = plot_data['Retailer'].unique()
+            colors = ['steelblue', 'coral', 'seagreen', 'mediumpurple', 'goldenrod']
+            for i, retailer in enumerate(retailers):
+                rdf = plot_data[plot_data['Retailer'] == retailer].sort_values('Date')
+                color = colors[i % len(colors)]
+                ax1.plot(rdf['Date'], rdf[sales_col], alpha=0.35, color=color, linewidth=0.8)
+                # 8-week rolling average for readability
+                rolling = rdf.set_index('Date')[sales_col].rolling('56D', min_periods=1).mean()
+                ax1.plot(rolling.index, rolling.values, color=color, linewidth=2, label=retailer)
+        else:
+            plot_data = plot_data.sort_values('Date')
+            ax1.plot(plot_data['Date'], plot_data[sales_col], alpha=0.35, color='steelblue', linewidth=0.8)
+            rolling = plot_data.set_index('Date')[sales_col].rolling('56D', min_periods=1).mean()
+            ax1.plot(rolling.index, rolling.values, color='steelblue', linewidth=2, label='All')
+
+        # Add trend direction annotation
+        beta_mean = results.beta_time_trend.mean
+        annual_pct = (np.exp(beta_mean * 52) - 1) * 100
+        direction = "▲" if annual_pct > 0 else "▼"
+        ax1.text(0.02, 0.95,
+                 f"Underlying trend: {direction} {annual_pct:+.1f}% annualized\n(controlling for price, promos, seasonality)",
+                 transform=ax1.transAxes, fontsize=10,
+                 verticalalignment='top',
+                 bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.9))
+
+        ax1.set_xlabel('Date')
+        ax1.set_ylabel(sales_col.replace('_', ' '))
+        ax1.set_title('Volume Sales Over Time (with 8-week rolling average)', fontweight='bold')
+        ax1.legend(loc='upper right')
+        ax1.grid(alpha=0.3)
+
+    # ------------------------------------------------------------------
+    # Bottom panel: beta_time posterior
+    # ------------------------------------------------------------------
+    samples = results.trace.posterior['beta_time'].values.flatten()
+
+    ax2.hist(samples, bins=60, density=True, alpha=0.6, color='steelblue', edgecolor='black')
+    ax2.axvline(results.beta_time_trend.mean, color='red', linestyle='--', linewidth=2,
+                label=f'Mean: {results.beta_time_trend.mean:.5f}')
+    ax2.axvline(results.beta_time_trend.ci_lower, color='green', linestyle=':', linewidth=1.5)
+    ax2.axvline(results.beta_time_trend.ci_upper, color='green', linestyle=':', linewidth=1.5,
+                label=f'95% CI: [{results.beta_time_trend.ci_lower:.5f}, {results.beta_time_trend.ci_upper:.5f}]')
+    ax2.axvline(0, color='black', linestyle='-', linewidth=1, alpha=0.4)
+
+    # Annualized interpretation
+    annual_samples = (np.exp(samples * 52) - 1) * 100
+    annual_mean = annual_samples.mean()
+    annual_ci = [np.percentile(annual_samples, 2.5), np.percentile(annual_samples, 97.5)]
+    prob_declining = float((samples < 0).mean())
+
+    ax2.text(0.02, 0.95,
+             f"Annualized: {annual_mean:+.1f}% [{annual_ci[0]:+.1f}%, {annual_ci[1]:+.1f}%]\n"
+             f"P(declining) = {prob_declining:.0%}",
+             transform=ax2.transAxes, fontsize=10,
+             verticalalignment='top',
+             bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.9))
+
+    ax2.set_xlabel('beta_time (weekly log-volume change)')
+    ax2.set_ylabel('Density')
+    ax2.set_title('Time Trend Posterior Distribution', fontweight='bold')
+    ax2.legend(fontsize=9)
+    ax2.grid(alpha=0.3)
+
+    plt.tight_layout()
+
+    if output_path:
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        print(f"Time trend plot saved to {output_path}")
+
     return fig
 
 
@@ -656,6 +784,14 @@ def generate_html_report(
     seasonal_path = output_dir / 'seasonal_plot.png'
     plot_seasonal_patterns(results, data, output_path=str(seasonal_path))
     plt.close()
+
+    # Time trend plot
+    time_trend_path = None
+    if getattr(results, 'beta_time_trend', None) is not None:
+        print("  Creating time trend plot...")
+        time_trend_path = output_dir / 'time_trend_plot.png'
+        plot_time_trend(results, data, output_path=str(time_trend_path))
+        plt.close()
     
     # V2: base vs promo comparison + separate scenario plots
     base_vs_promo_path = None
@@ -695,6 +831,7 @@ def generate_html_report(
         base_vs_promo_path=base_vs_promo_path,
         revenue_base_path=revenue_base_path,
         revenue_promo_path=revenue_promo_path,
+        time_trend_path=time_trend_path,
     )
     
     # Write HTML file
@@ -708,7 +845,7 @@ def generate_html_report(
     return str(report_path)
 
 
-def _create_html_content(results, data, output_dir, group_path, base_vs_promo_path, revenue_base_path, revenue_promo_path):
+def _create_html_content(results, data, output_dir, group_path, base_vs_promo_path, revenue_base_path, revenue_promo_path, time_trend_path=None):
     """Create HTML content"""
     
     # Determine model type
@@ -912,6 +1049,9 @@ def _create_html_content(results, data, output_dir, group_path, base_vs_promo_pa
         <h2>🌱 Seasonal Analysis</h2>
         <p>Seasonal patterns in sales and estimated seasonal effects relative to Winter baseline.</p>
         <img src="seasonal_plot.png" alt="Seasonal Patterns">
+
+        <!-- Time Trend -->
+        {f'<h2>📉 Underlying Demand Trend</h2><p>Volume trend over time controlling for price, promotions, and seasonality. Annualized change: <strong>{((np.exp(results.beta_time_trend.mean * 52) - 1) * 100):+.1f}%</strong> [{((np.exp(results.beta_time_trend.ci_lower * 52) - 1) * 100):+.1f}%, {((np.exp(results.beta_time_trend.ci_upper * 52) - 1) * 100):+.1f}%].</p><img src="time_trend_plot.png" alt="Time Trend">' if time_trend_path else ''}
         
         <!-- Base vs Promo Comparison (V2) -->
         {f'<h2>⚖️ Base vs Promotional Elasticity</h2><p>Side-by-side comparison of strategic (base) vs tactical (promo) responsiveness.</p><img src=\"base_vs_promo_comparison.png\" alt=\"Base vs Promo Comparison\">' if base_vs_promo_path else ''}
@@ -1044,6 +1184,10 @@ def create_all_plots(results, data, output_dir='./plots'):
     
     plots['seasonal'] = plot_seasonal_patterns(results, data, output_path=str(output_dir / 'seasonal.png'))
     plt.close()
+
+    if getattr(results, 'beta_time_trend', None) is not None:
+        plots['time_trend'] = plot_time_trend(results, data, output_path=str(output_dir / 'time_trend.png'))
+        plt.close()
 
     # V2: separate scenario plots
     plots['revenue_base'] = plot_revenue_scenarios_base(results, output_path=str(output_dir / 'revenue_base.png'))
