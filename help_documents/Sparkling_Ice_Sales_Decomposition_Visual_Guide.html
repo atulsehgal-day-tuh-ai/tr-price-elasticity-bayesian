@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sparkling Ice — Sales Decomposition Visual Guide</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Source+Sans+3:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0f1a;
+  --surface: #111827;
+  --surface2: #1a2236;
+  --border: #1f2e45;
+  --border-glow: #2a3f5f;
+  --text: #e0e7ef;
+  --text-dim: #7e8fa6;
+  --text-muted: #4e5d73;
+  --white: #f1f5f9;
+  --accent: #60a5fa;
+  --baseline: #94a3b8;
+  --price-neg: #f87171;
+  --price-neg-soft: rgba(248,113,113,0.15);
+  --promo: #4ade80;
+  --promo-soft: rgba(74,222,128,0.12);
+  --cross: #fbbf24;
+  --cross-soft: rgba(251,191,36,0.12);
+  --season: #c084fc;
+  --season-soft: rgba(192,132,252,0.12);
+  --trend: #22d3ee;
+  --trend-soft: rgba(34,211,238,0.10);
+  --noise: #64748b;
+  --observed: #f8fafc;
+  --base-elast: #fb923c;
+  --promo-elast: #a78bfa;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Source Sans 3', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.65;
+}
+.page { max-width: 1140px; margin: 0 auto; padding: 56px 36px 80px; }
+
+/* ---- Header ---- */
+.hero { margin-bottom: 56px; }
+.tag {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; font-weight: 500;
+  letter-spacing: 2.5px; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 14px;
+}
+h1 {
+  font-family: 'Playfair Display', serif;
+  font-size: 40px; font-weight: 700; line-height: 1.2;
+  color: var(--white); margin-bottom: 14px;
+}
+.lead {
+  font-size: 16.5px; color: var(--text-dim);
+  max-width: 740px; line-height: 1.75;
+}
+
+/* ---- Equation banner ---- */
+.eq-banner {
+  background: linear-gradient(135deg, var(--surface) 60%, var(--surface2));
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 26px 32px;
+  margin-bottom: 60px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13.5px;
+  line-height: 2;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.eq-banner .c-w { color: var(--white); font-weight: 600; }
+.eq-banner .c-bl { color: var(--baseline); }
+.eq-banner .c-pr { color: var(--price-neg); }
+.eq-banner .c-pm { color: var(--promo); }
+.eq-banner .c-cr { color: var(--cross); }
+.eq-banner .c-se { color: var(--season); }
+.eq-banner .c-tr { color: var(--trend); }
+.eq-banner .c-no { color: var(--noise); }
+
+/* ---- Section blocks ---- */
+.block { margin-bottom: 76px; }
+.block h2 {
+  font-family: 'Playfair Display', serif;
+  font-size: 26px; font-weight: 600;
+  color: var(--white); margin-bottom: 6px;
+}
+.block .desc {
+  font-size: 15px; color: var(--text-dim);
+  max-width: 700px; margin-bottom: 24px; line-height: 1.75;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px 28px 20px;
+}
+.card canvas { width: 100% !important; }
+.insight {
+  margin-top: 18px;
+  padding: 14px 18px;
+  background: var(--surface2);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 10px 10px 0;
+  font-size: 13.5px; color: var(--text-dim); line-height: 1.75;
+}
+.insight b { color: var(--text); font-weight: 600; }
+
+/* ---- Toggle buttons ---- */
+.toggles { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px; }
+.tbtn {
+  display:inline-flex; align-items:center; gap:7px;
+  padding: 9px 16px;
+  background: var(--surface); border:1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-family: 'Source Sans 3', sans-serif;
+  font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all .2s; user-select:none;
+}
+.tbtn:hover { border-color: var(--text-dim); color: var(--text-dim); }
+.tbtn.on { border-color: var(--accent); color: var(--text); background: rgba(96,165,250,.07); }
+.tbtn .dot { width:10px; height:10px; border-radius:2px; flex-shrink:0; }
+
+/* ---- Legend row ---- */
+.leg { display:flex; flex-wrap:wrap; gap:14px; margin-bottom:16px; }
+.leg-item { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-dim); }
+.leg-box { width:12px; height:12px; border-radius:2px; flex-shrink:0; }
+
+/* ---- Scenario panel ---- */
+.scenario-panel {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+.scenario-controls {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px;
+}
+.scenario-controls h3 {
+  font-size: 14px; font-weight: 600; color: var(--text);
+  margin-bottom: 16px;
+}
+.slider-group { margin-bottom: 18px; }
+.slider-group label {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 13px; color: var(--text-dim); margin-bottom: 6px;
+}
+.slider-group label span { 
+  font-family: 'JetBrains Mono', monospace; 
+  font-size: 12px; font-weight: 500;
+  color: var(--white);
+}
+input[type=range] {
+  width: 100%; height: 4px;
+  -webkit-appearance: none; appearance: none;
+  background: var(--border); border-radius: 4px; outline: none;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent); cursor: pointer;
+  border: 2px solid var(--bg);
+}
+
+hr.sep {
+  border: none; height: 1px;
+  background: var(--border); margin: 56px 0;
+}
+
+@media (max-width:768px) {
+  .page { padding: 28px 16px 60px; }
+  h1 { font-size: 28px; }
+  .block h2 { font-size: 22px; }
+  .card { padding: 16px 14px 14px; }
+  .scenario-panel { grid-template-columns: 1fr; }
+  .eq-banner { font-size: 11px; padding: 18px 16px; }
+  .micro-grid { grid-template-columns: 1fr !important; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- ===== HEADER ===== -->
+<div class="hero">
+  <div class="tag">Section 3.5 — Visual Decomposition</div>
+  <h1>Peeling the Onion:<br>How the Model Breaks Down Sales</h1>
+  <p class="lead">
+    Our equation doesn't just predict sales — it decomposes every week into the individual forces driving volume.
+    These visualizations use example BJ's data to show how the model peels apart observed sales into its component
+    layers, revealing the true contribution of price, promotions, seasonality, competition, and trend.
+    The final charts illustrate why separating base-price elasticity from promotional elasticity is essential.
+  </p>
+</div>
+
+<!-- Color-coded equation -->
+<div class="eq-banner">
+  <span class="c-w">Log(Sales)</span> <span style="color:var(--text-muted)">=</span>
+  <span class="c-bl">β₀</span> <span style="color:var(--text-muted)">+</span>
+  <span class="c-pr">β₁·Log(Base_Price)</span> <span style="color:var(--text-muted)">+</span>
+  <span class="c-pm">β₂·Promo_Depth</span> <span style="color:var(--text-muted)">+</span>
+  <span class="c-cr">β₃·Log(Price_PL)</span> <span style="color:var(--text-muted)">+</span>
+  <span class="c-se">β₄·Spring + β₅·Summer + β₆·Fall</span> <span style="color:var(--text-muted)">+</span>
+  <span class="c-tr">β₇·Time</span> <span style="color:var(--text-muted)">+</span>
+  <span class="c-no">ε</span>
+</div>
+
+<!-- ===== CHART 1 — OBSERVED vs MODEL ===== -->
+<div class="block">
+  <h2>1. What the Model Sees vs. What We Observe</h2>
+  <p class="desc">
+    The white line is actual weekly sales at BJ's. The blue dashed line is what our model predicts after
+    fitting all parameters. The gap between them is unexplained noise (ε). A well-fitting model makes
+    this gap small and patternless.
+  </p>
+  <div class="card">
+    <canvas id="c1" height="180"></canvas>
+    <div class="insight">
+      <b>What to look for:</b> The model tracks the major moves — summer peaks, winter troughs, promo spikes —
+      while the residual gap is small and random. If the gap were systematically positive in certain months,
+      it would mean we're missing a factor.
+    </div>
+  </div>
+</div>
+
+<hr class="sep">
+
+<!-- ===== CHART 2 — WATERFALL ===== -->
+<div class="block">
+  <h2>2. Anatomy of a Single Week: The Waterfall</h2>
+  <p class="desc">
+    Pick any week and ask: "Why did we sell this much?" This waterfall decomposes a summer promotional
+    week (Week 28, July) into each factor's contribution, starting from the baseline.
+  </p>
+  <div class="card">
+    <div class="leg">
+      <div class="leg-item"><div class="leg-box" style="background:var(--baseline)"></div>Baseline</div>
+      <div class="leg-item"><div class="leg-box" style="background:var(--price-neg)"></div>Base Price</div>
+      <div class="leg-item"><div class="leg-box" style="background:var(--promo)"></div>Promo Lift</div>
+      <div class="leg-item"><div class="leg-box" style="background:var(--cross)"></div>Cross-Price</div>
+      <div class="leg-item"><div class="leg-box" style="background:var(--season)"></div>Seasonality</div>
+      <div class="leg-item"><div class="leg-box" style="background:var(--trend)"></div>Trend</div>
+      <div class="leg-item"><div class="leg-box" style="background:var(--white)"></div>Predicted Total</div>
+    </div>
+    <canvas id="c2" height="200"></canvas>
+    <div class="insight">
+      <b>Reading this chart:</b> Baseline says ~4,200 cases. Current base price suppresses volume by ~780 cases.
+      The 15% promo recovers ~640 cases. Summer adds ~530. Private Label being priced high adds ~190 (some consumers switch to us).
+      Slight downward trend subtracts ~40 cases. Net: ~4,740 predicted cases.
+    </div>
+  </div>
+</div>
+
+<hr class="sep">
+
+<!-- ===== CHART 3 — STACKED AREA ===== -->
+<div class="block">
+  <h2>3. The Full Year, Layer by Layer</h2>
+  <p class="desc">
+    This is the onion, peeled. Each colored band shows one factor's contribution across all 52 weeks.
+    Seasonal waves create the broad arc; promotions create sharp spikes. The price drag is a constant
+    pull below the baseline. The top edge equals predicted sales.
+  </p>
+  <div class="card">
+    <canvas id="c3" height="210"></canvas>
+    <div class="insight">
+      <b>Key insight:</b> The baseline and price effect are relatively stable — these are structural.
+      The purple seasonal band creates the broad summer arc. Green promo spikes are sharp and intermittent.
+      This visual makes it obvious why blending base price and promo into a single elasticity would be
+      misleading — they have completely different shapes and behaviors.
+    </div>
+  </div>
+</div>
+
+<hr class="sep">
+
+<!-- ===== CHART 3.5 — MICROSCOPE VIEW ===== -->
+<div class="block">
+  <h2>3½. The Microscope: Each Factor at Its Own Scale</h2>
+  <p class="desc">
+    In the stacked chart above, cross-price gains, seasonality swings, and the time trend are nearly invisible 
+    because the baseline (~4,200 cases) dominates the y-axis. Below, we isolate each factor's weekly contribution 
+    in <b>percentage terms</b> — every chart has its own y-axis, so even a 0.5% weekly trend is clearly visible.
+    Think of this as zooming in with a microscope on each layer of the onion.
+  </p>
+  <div class="micro-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:24px;">
+    <!-- Panel A: Base Price -->
+    <div class="card" style="padding:20px 20px 14px;">
+      <canvas id="cz-price" height="160"></canvas>
+    </div>
+    <!-- Panel B: Promo -->
+    <div class="card" style="padding:20px 20px 14px;">
+      <canvas id="cz-promo" height="160"></canvas>
+    </div>
+    <!-- Panel C: Cross-Price -->
+    <div class="card" style="padding:20px 20px 14px;">
+      <canvas id="cz-cross" height="160"></canvas>
+    </div>
+    <!-- Panel D: Seasonality -->
+    <div class="card" style="padding:20px 20px 14px;">
+      <canvas id="cz-season" height="160"></canvas>
+    </div>
+  </div>
+  <!-- Full-width panel: Trend -->
+  <div class="card" style="padding:20px 20px 14px; margin-bottom:24px;">
+    <canvas id="cz-trend" height="130"></canvas>
+  </div>
+  <!-- Combined normalized panel -->
+  <div class="card">
+    <canvas id="cz-all" height="200"></canvas>
+    <div class="insight">
+      <b>Now every factor is visible.</b> Base price (red) is a steady −18% to −20% drag. Promotions (green) spike to 
+      +30-55% during 12 promo weeks. Seasonality (purple) creates a smooth +5% to +25% summer arc. Cross-price (yellow) 
+      contributes a quiet +3% to +7% depending on Private Label pricing. The trend (cyan) is a subtle −0.1% to −2% 
+      decline over the year. Each operates at a fundamentally different magnitude and rhythm — which is exactly why 
+      the model needs all of them as separate terms.
+    </div>
+  </div>
+</div>
+
+<hr class="sep">
+
+<!-- ===== CHART 4 — INTERACTIVE TOGGLE ===== -->
+<div class="block">
+  <h2>4. Build It Yourself: Toggle Each Layer</h2>
+  <p class="desc">
+    The x-axis (zero line) is the baseline — what we'd sell if no other forces existed. Click each button 
+    in order to progressively layer in factors and watch the curve build. Each new layer stacks on top 
+    of the previous ones, just like the equation. Because everything is shown in <b>% deviation from baseline</b>, 
+    even the subtle time trend is clearly visible.
+  </p>
+  <div class="toggles">
+    <button class="tbtn" data-l="price" onclick="tgl(this)"><span class="dot" style="background:var(--price-neg)"></span>① Base Price (β₁)</button>
+    <button class="tbtn" data-l="promo" onclick="tgl(this)"><span class="dot" style="background:var(--promo)"></span>② + Promo Lift (β₂)</button>
+    <button class="tbtn" data-l="cross" onclick="tgl(this)"><span class="dot" style="background:var(--cross)"></span>③ + Cross-Price (β₃)</button>
+    <button class="tbtn" data-l="seasonal" onclick="tgl(this)"><span class="dot" style="background:var(--season)"></span>④ + Seasonality (β₄₋₆)</button>
+    <button class="tbtn" data-l="trend" onclick="tgl(this)"><span class="dot" style="background:var(--trend)"></span>⑤ + Time Trend (β₇)</button>
+  </div>
+  <div class="card">
+    <canvas id="c4" height="210"></canvas>
+    <div class="insight" id="tgl-msg">
+      <b>Baseline = zero (the x-axis).</b> This flat line at 0% represents ~4,200 cases/week — what we'd sell if 
+      price, promos, seasons, competition, and trend didn't exist. Click <b>① Base Price</b> to see the first 
+      and biggest force acting on sales.
+    </div>
+  </div>
+</div>
+
+<hr class="sep">
+
+<!-- ===== CHART 5 — PROMO vs NON-PROMO ===== -->
+<div class="block">
+  <h2>5. Promotional Lift: Promo Weeks vs. Non-Promo Weeks</h2>
+  <p class="desc">
+    Zooming into the 12 promotional weeks: the dark bar is what sales would have been without the promo
+    (base demand + all other factors). The green bar is the incremental lift from the promotion alone — 
+    the pure β₂ effect.
+  </p>
+  <div class="card">
+    <canvas id="c5" height="200"></canvas>
+    <div class="insight">
+      <b>Why this matters:</b> The green bars are cases that exist <em>only</em> because of the promotion.
+      Divide trade spend by these incremental cases and you get the true cost-per-incremental-case — 
+      the metric that tells you whether each promotional dollar was worth it.
+    </div>
+  </div>
+</div>
+
+<hr class="sep">
+
+<!-- ===== CHART 6 — ANNUAL ATTRIBUTION DONUT ===== -->
+<div class="block">
+  <h2>6. Who Gets Credit? Annual Volume Attribution</h2>
+  <p class="desc">
+    Adding up each factor's contribution across all 52 weeks: what share of total predicted volume does each explain?
+    This shows where our volume really comes from.
+  </p>
+  <div class="card" style="max-width:560px; margin:0 auto;">
+    <canvas id="c6" height="260"></canvas>
+    <div class="insight">
+      <b>The takeaway:</b> Most volume comes from base demand — the product people buy regardless of price moves.
+      Seasonality is the second-largest driver. Promotions generate meaningful incremental volume but aren't the
+      majority of sales. This perspective prevents over-reliance on promotional spending.
+    </div>
+  </div>
+</div>
+
+<hr class="sep">
+
+<!-- ===== CHART 7 — DUAL ELASTICITY TIME SERIES ===== -->
+<div class="block">
+  <h2>7. Two Elasticities in Action: Base Price vs. Promotional Effect</h2>
+  <p class="desc">
+    This is the core innovation of our approach. The top panel shows the base-price effect (β₁) — a steady,
+    structural drag on volume that moves slowly as everyday price changes. The bottom panel shows the promo effect
+    (β₂) — sharp, intermittent spikes when discounts are active. A single blended elasticity would average these
+    two fundamentally different patterns into a misleading number.
+  </p>
+  <div class="card">
+    <canvas id="c7a" height="140"></canvas>
+    <div style="height:20px"></div>
+    <canvas id="c7b" height="140"></canvas>
+    <div class="insight">
+      <b>Why dual elasticity matters:</b> The base-price effect (orange, β₁ = −1.85) is always present — it's the
+      structural cost of pricing above zero. The promo effect (purple, β₂ = 3.20 semi-elasticity) fires only during
+      promotional weeks and is roughly 2–3× more powerful per point. If you blended them, you'd overestimate the
+      damage of a permanent price increase (by mixing in promo weeks) and underestimate the lift of a promotion
+      (by mixing in non-promo weeks). Separating them gives precise levers for both strategic and tactical decisions.
+    </div>
+  </div>
+</div>
+
+<hr class="sep">
+
+<!-- ===== CHART 8 — SCENARIO SIMULATOR ===== -->
+<div class="block">
+  <h2>8. What-If Simulator: See Both Elasticities at Work</h2>
+  <p class="desc">
+    The zero line is your current forecast. Drag the sliders and watch the impact appear as a percentage change
+    above or below today's plan. Price increases pull the line down (structural drag via β₁). 
+    Deeper promos create spikes above (tactical lift via β₂). Try "raise price 5% and add 5 points of promo" 
+    to see the classic Hi-Lo trade-off — the steady erosion vs. the intermittent recovery.
+  </p>
+  <div class="scenario-panel">
+    <div class="scenario-controls">
+      <h3>Adjust the Levers</h3>
+      <div class="slider-group">
+        <label>Base Price Change <span id="v-price">0%</span></label>
+        <input type="range" id="s-price" min="-10" max="10" value="0" step="1" oninput="updateSim()">
+      </div>
+      <div class="slider-group">
+        <label>Promo Depth Change <span id="v-promo">0 pts</span></label>
+        <input type="range" id="s-promo" min="-10" max="15" value="0" step="1" oninput="updateSim()">
+      </div>
+      <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
+        <div style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">Model Parameters</div>
+        <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--text-dim); line-height:2;">
+          β₁ (base price) = <span style="color:var(--base-elast)">−1.85</span><br>
+          β₂ (promo depth) = <span style="color:var(--promo-elast)">3.20</span>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <canvas id="c8" height="220"></canvas>
+      <div class="insight" id="sim-msg">
+        <b>Current scenario:</b> No changes. The zero line is your current forecast.
+        Drag the sliders to see the % impact on weekly volume — price drag below, promo lift above.
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- .page -->
+
+<script>
+// ================================================================
+//  DATA GENERATION — Synthetic BJ's Sparkling Ice, 52 Weeks
+// ================================================================
+const B0=8.34, B1=-1.85, B2=3.20, B3=0.45, B4=0.08, B5=0.22, B6=0.05, B7=-0.0008;
+const N=52, weeks=Array.from({length:N},(_,i)=>i+1);
+const wk=w=>`W${w}`;
+const labels=weeks.map(wk);
+
+// Deterministic pseudo-random
+const rng=(i)=>{let x=Math.sin(i*127.1+311.7)*43758.5453;return x-Math.floor(x);};
+
+const season=w=>{
+  if(w>=10&&w<=22) return 'spring';
+  if(w>=23&&w<=35) return 'summer';
+  if(w>=36&&w<=48) return 'fall';
+  return 'winter';
+};
+
+// Inputs
+const basePrice=weeks.map((w,i)=>17.49+(w>26?0.50:0)+(rng(i*3)-0.5)*0.30);
+const plPrice=weeks.map((w,i)=>12.99+(rng(i*7+2)-0.5)*1.0);
+const promoWks=new Set([4,11,16,20,24,28,32,36,40,44,48,51]);
+const promoDepth=weeks.map((w,i)=>promoWks.has(w)?0.10+rng(i*11)*0.12:0);
+
+// Contributions (log-scale additive)
+const cBase=weeks.map(()=>B0);
+const cPrice=weeks.map((_,i)=>B1*Math.log(basePrice[i]));
+const cPromo=weeks.map((_,i)=>B2*promoDepth[i]);
+const cCross=weeks.map((_,i)=>B3*Math.log(plPrice[i]));
+const cSeason=weeks.map(w=>{const s=season(w);return s==='spring'?B4:s==='summer'?B5:s==='fall'?B6:0;});
+const cTrend=weeks.map(w=>B7*w);
+const noise=weeks.map((_,i)=>(rng(i*31+5)-0.5)*0.08);
+
+const logPred=weeks.map((_,i)=>cBase[i]+cPrice[i]+cPromo[i]+cCross[i]+cSeason[i]+cTrend[i]);
+const logObs=logPred.map((v,i)=>v+noise[i]);
+const pred=logPred.map(v=>Math.exp(v));
+const obs=logObs.map(v=>Math.exp(v));
+
+// Cumulative build-up in real space (for stacked & toggle)
+const realBase=cBase.map(v=>Math.exp(v));
+const cumPrice=weeks.map((_,i)=>Math.exp(cBase[i]+cPrice[i]));
+const cumPromo=weeks.map((_,i)=>Math.exp(cBase[i]+cPrice[i]+cPromo[i]));
+const cumCross=weeks.map((_,i)=>Math.exp(cBase[i]+cPrice[i]+cPromo[i]+cCross[i]));
+const cumSeason=weeks.map((_,i)=>Math.exp(cBase[i]+cPrice[i]+cPromo[i]+cCross[i]+cSeason[i]));
+const cumTrend=pred; // full model
+
+// Layer deltas in real space (for stacking)
+const dBase=realBase;
+const dPrice=weeks.map((_,i)=>cumPrice[i]-realBase[i]);       // negative
+const dPromo=weeks.map((_,i)=>cumPromo[i]-cumPrice[i]);
+const dCross=weeks.map((_,i)=>cumCross[i]-cumPromo[i]);
+const dSeason=weeks.map((_,i)=>cumSeason[i]-cumCross[i]);
+const dTrend=weeks.map((_,i)=>cumTrend[i]-cumSeason[i]);
+
+// Chart.js defaults
+Chart.defaults.color='#7e8fa6';
+Chart.defaults.borderColor='#1f2e45';
+Chart.defaults.font.family="'Source Sans 3',sans-serif";
+Chart.defaults.font.size=12;
+
+const ttip={mode:'index',intersect:false};
+const noGrid={grid:{display:false}};
+const caseFmt=v=>Math.round(v).toLocaleString();
+
+// ================================================================
+//  CHART 1 — Observed vs. Model
+// ================================================================
+new Chart(document.getElementById('c1'),{
+  type:'line',
+  data:{
+    labels,
+    datasets:[
+      {label:'Observed Sales',data:obs.map(Math.round),borderColor:'#f8fafc',borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:.35,fill:false,order:1},
+      {label:'Model Prediction',data:pred.map(Math.round),borderColor:'#60a5fa',borderWidth:2,borderDash:[6,3],pointRadius:0,pointHoverRadius:4,tension:.35,fill:false,order:2}
+    ]
+  },
+  options:{
+    responsive:true,
+    interaction:ttip,
+    plugins:{
+      legend:{position:'top',labels:{usePointStyle:true,pointStyle:'line',padding:20}},
+      tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${caseFmt(c.parsed.y)} cases`}}
+    },
+    scales:{x:noGrid,y:{title:{display:true,text:'Cases',color:'#4e5d73'},ticks:{callback:caseFmt}}}
+  }
+});
+
+// ================================================================
+//  CHART 2 — Waterfall (Week 28)
+// ================================================================
+(function(){
+  const i=27; // week 28
+  const vals=[];
+  let run=0;
+  const bl=Math.exp(B0); vals.push({l:'Baseline\n(β₀)',v:bl,c:'#94a3b8'}); run=bl;
+  const p1=cumPrice[i]-realBase[i]; vals.push({l:'Base Price\n(β₁)',v:p1,c:'#f87171'}); run+=p1;
+  const p2=cumPromo[i]-cumPrice[i]; vals.push({l:'Promo Lift\n(β₂)',v:p2,c:'#4ade80'}); run+=p2;
+  const p3=cumCross[i]-cumPromo[i]; vals.push({l:'Cross-Price\n(β₃)',v:p3,c:'#fbbf24'}); run+=p3;
+  const p4=cumSeason[i]-cumCross[i]; vals.push({l:'Summer\n(β₅)',v:p4,c:'#c084fc'}); run+=p4;
+  const p5=pred[i]-cumSeason[i]; vals.push({l:'Trend\n(β₇)',v:p5,c:'#22d3ee'}); run+=p5;
+  vals.push({l:'Predicted\nTotal',v:run,c:'#f8fafc'});
+
+  // Floating bars: [bottom, top]
+  const bars=[];
+  let cum=0;
+  for(let j=0;j<vals.length;j++){
+    if(j===0){ bars.push([0,vals[0].v]); cum=vals[0].v; }
+    else if(j===vals.length-1){ bars.push([0,vals[j].v]); }
+    else { const nv=vals[j].v; if(nv>=0){bars.push([cum,cum+nv]);cum+=nv;}else{bars.push([cum+nv,cum]);cum+=nv;} }
+  }
+
+  new Chart(document.getElementById('c2'),{
+    type:'bar',
+    data:{
+      labels:vals.map(v=>v.l),
+      datasets:[{
+        data:bars,
+        backgroundColor:vals.map(v=>v.c),
+        borderRadius:4,
+        barPercentage:0.65
+      }]
+    },
+    options:{
+      responsive:true,
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{
+          label:c=>{const d=c.raw;const v=Math.round(d[1]-d[0]);return `${v>=0?'+':''}${caseFmt(v)} cases`;}
+        }}
+      },
+      scales:{
+        x:{...noGrid,ticks:{font:{size:11}}},
+        y:{title:{display:true,text:'Cases',color:'#4e5d73'},ticks:{callback:caseFmt},suggestedMin:0}
+      }
+    }
+  });
+})();
+
+// ================================================================
+//  CHART 3 — Stacked Area (Full Year)
+// ================================================================
+(function(){
+  // We'll show positive contributions stacked, with price drag as a negative area
+  // Simpler approach: cumulative layers
+  const datasets=[
+    {label:'Baseline (β₀)',data:realBase.map(Math.round),backgroundColor:'rgba(148,163,184,0.35)',borderColor:'transparent',fill:true,order:6},
+    // Price is negative — we'll show the "after price" line and fill down to it
+  ];
+
+  // Build cumulative positive adds on top of price-adjusted baseline
+  new Chart(document.getElementById('c3'),{
+    type:'line',
+    data:{
+      labels,
+      datasets:[
+        {label:'Baseline (β₀)',data:realBase.map(Math.round),backgroundColor:'rgba(148,163,184,0.4)',borderColor:'rgba(148,163,184,0.6)',borderWidth:1,fill:'origin',pointRadius:0,tension:.3,order:7},
+        {label:'After Price (β₁)',data:cumPrice.map(Math.round),backgroundColor:'rgba(248,113,113,0.25)',borderColor:'rgba(248,113,113,0.5)',borderWidth:1,fill:'-1',pointRadius:0,tension:.3,order:6},
+        {label:'After Promo (β₂)',data:cumPromo.map(Math.round),backgroundColor:'rgba(74,222,128,0.3)',borderColor:'rgba(74,222,128,0.5)',borderWidth:1,fill:'-1',pointRadius:0,tension:.3,order:5},
+        {label:'After Cross-Price (β₃)',data:cumCross.map(Math.round),backgroundColor:'rgba(251,191,36,0.25)',borderColor:'rgba(251,191,36,0.4)',borderWidth:1,fill:'-1',pointRadius:0,tension:.3,order:4},
+        {label:'After Seasonality (β₄₋₆)',data:cumSeason.map(Math.round),backgroundColor:'rgba(192,132,252,0.3)',borderColor:'rgba(192,132,252,0.5)',borderWidth:1,fill:'-1',pointRadius:0,tension:.3,order:3},
+        {label:'After Trend (β₇) = Predicted',data:pred.map(Math.round),backgroundColor:'rgba(34,211,238,0.2)',borderColor:'rgba(34,211,238,0.5)',borderWidth:1,fill:'-1',pointRadius:0,tension:.3,order:2},
+        {label:'Observed',data:obs.map(Math.round),borderColor:'#f8fafc',borderWidth:1.5,borderDash:[4,3],pointRadius:0,fill:false,tension:.35,order:1}
+      ]
+    },
+    options:{
+      responsive:true,
+      interaction:ttip,
+      plugins:{
+        legend:{position:'top',labels:{usePointStyle:true,pointStyle:'rect',padding:14,font:{size:11}}},
+        tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${caseFmt(c.parsed.y)} cases`}}
+      },
+      scales:{x:noGrid,y:{title:{display:true,text:'Cases',color:'#4e5d73'},ticks:{callback:caseFmt},suggestedMin:0}}
+    }
+  });
+})();
+
+// ================================================================
+//  CHART 3.5 — Microscope Views (each factor isolated at own scale)
+// ================================================================
+(function(){
+  // Compute each factor's % contribution relative to predicted sales
+  const pctPrice=weeks.map((_,i)=>+( (dPrice[i]/pred[i])*100 ).toFixed(1));
+  const pctPromo=weeks.map((_,i)=>+( (dPromo[i]/pred[i])*100 ).toFixed(1));
+  const pctCross=weeks.map((_,i)=>+( (dCross[i]/pred[i])*100 ).toFixed(1));
+  const pctSeason=weeks.map((_,i)=>+( (dSeason[i]/pred[i])*100 ).toFixed(1));
+  const pctTrend=weeks.map((_,i)=>+( (dTrend[i]/pred[i])*100 ).toFixed(1));
+
+  const microOpts=(title,color,colorSoft,isBars)=>({
+    responsive:true,
+    interaction:ttip,
+    plugins:{
+      legend:{display:false},
+      title:{display:true,text:title,color:color,font:{size:13,weight:'600',family:"'Source Sans 3',sans-serif"},align:'start',padding:{bottom:10}},
+      tooltip:{callbacks:{label:c=>`${c.parsed.y>0?'+':''}${c.parsed.y}% of weekly sales`}}
+    },
+    scales:{
+      x:{...noGrid,ticks:{maxTicksLimit:7,font:{size:10}}},
+      y:{
+        title:{display:true,text:'% of Sales',color:'#4e5d73',font:{size:10}},
+        grid:{color:'rgba(31,46,69,0.5)'},
+        ticks:{callback:v=>`${v>0?'+':''}${v}%`,font:{size:10}}
+      }
+    }
+  });
+
+  // A: Base Price (always negative, area chart)
+  new Chart(document.getElementById('cz-price'),{
+    type:'line',
+    data:{labels,datasets:[
+      {data:pctPrice,borderColor:'#f87171',backgroundColor:'rgba(248,113,113,0.15)',borderWidth:2,pointRadius:0,tension:.35,fill:'origin'},
+      {data:weeks.map(()=>0),borderColor:'rgba(255,255,255,0.08)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false}
+    ]},
+    options:microOpts('Base Price Effect (β₁) — steady structural drag','#f87171','rgba(248,113,113,0.15)')
+  });
+
+  // B: Promo (spikes, bar chart)
+  new Chart(document.getElementById('cz-promo'),{
+    type:'bar',
+    data:{labels,datasets:[{
+      data:pctPromo,
+      backgroundColor:pctPromo.map(v=>v>0?'rgba(74,222,128,0.6)':'transparent'),
+      borderColor:pctPromo.map(v=>v>0?'#4ade80':'transparent'),
+      borderWidth:1,borderRadius:2,barPercentage:.85
+    }]},
+    options:microOpts('Promo Lift (β₂) — sharp intermittent spikes','#4ade80','rgba(74,222,128,0.15)',true)
+  });
+
+  // C: Cross-Price (small positive, area)
+  new Chart(document.getElementById('cz-cross'),{
+    type:'line',
+    data:{labels,datasets:[
+      {data:pctCross,borderColor:'#fbbf24',backgroundColor:'rgba(251,191,36,0.12)',borderWidth:2,pointRadius:0,tension:.35,fill:'origin'},
+      {data:weeks.map(()=>0),borderColor:'rgba(255,255,255,0.08)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false}
+    ]},
+    options:microOpts('Cross-Price Effect (β₃) — quiet but consistent gain','#fbbf24','rgba(251,191,36,0.12)')
+  });
+
+  // D: Seasonality (arc, area)
+  new Chart(document.getElementById('cz-season'),{
+    type:'line',
+    data:{labels,datasets:[
+      {data:pctSeason,borderColor:'#c084fc',backgroundColor:'rgba(192,132,252,0.15)',borderWidth:2,pointRadius:0,tension:.35,fill:'origin'},
+      {data:weeks.map(()=>0),borderColor:'rgba(255,255,255,0.08)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false}
+    ]},
+    options:microOpts('Seasonality (β₄₋₆) — the broad summer arc','#c084fc','rgba(192,132,252,0.15)')
+  });
+
+  // E: Trend (full-width, very small effect)
+  new Chart(document.getElementById('cz-trend'),{
+    type:'line',
+    data:{labels,datasets:[
+      {data:pctTrend,borderColor:'#22d3ee',backgroundColor:'rgba(34,211,238,0.10)',borderWidth:2.5,pointRadius:0,tension:.35,fill:'origin'},
+      {data:weeks.map(()=>0),borderColor:'rgba(255,255,255,0.1)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false}
+    ]},
+    options:{
+      responsive:true,
+      interaction:ttip,
+      plugins:{
+        legend:{display:false},
+        title:{display:true,text:'Time Trend (β₇ = −0.0008) — subtle weekly decline, now clearly visible',color:'#22d3ee',font:{size:13,weight:'600',family:"'Source Sans 3',sans-serif"},align:'start',padding:{bottom:10}},
+        tooltip:{callbacks:{label:c=>c.datasetIndex===0?`Trend impact: ${c.parsed.y}% of weekly sales`:''}}
+      },
+      scales:{
+        x:{...noGrid,ticks:{maxTicksLimit:13}},
+        y:{title:{display:true,text:'% of Sales',color:'#4e5d73'},grid:{color:'rgba(31,46,69,0.5)'},ticks:{callback:v=>`${v}%`}}
+      }
+    }
+  });
+
+  // F: All factors overlaid on one chart (% contribution)
+  new Chart(document.getElementById('cz-all'),{
+    type:'line',
+    data:{
+      labels,
+      datasets:[
+        {label:'Base Price (β₁)',data:pctPrice,borderColor:'#f87171',borderWidth:2,pointRadius:0,tension:.35,fill:false},
+        {label:'Promo Lift (β₂)',data:pctPromo,borderColor:'#4ade80',borderWidth:2,pointRadius:0,tension:.2,fill:false,
+         segment:{borderDash:ctx=>pctPromo[ctx.p0DataIndex]===0&&pctPromo[ctx.p1DataIndex]===0?[3,3]:[]}},
+        {label:'Cross-Price (β₃)',data:pctCross,borderColor:'#fbbf24',borderWidth:2,pointRadius:0,tension:.35,fill:false},
+        {label:'Seasonality (β₄₋₆)',data:pctSeason,borderColor:'#c084fc',borderWidth:2,pointRadius:0,tension:.35,fill:false},
+        {label:'Time Trend (β₇)',data:pctTrend,borderColor:'#22d3ee',borderWidth:2,pointRadius:0,tension:.35,fill:false},
+        {data:weeks.map(()=>0),borderColor:'rgba(255,255,255,0.1)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false,label:'Zero'}
+      ]
+    },
+    options:{
+      responsive:true,
+      interaction:ttip,
+      plugins:{
+        legend:{position:'top',labels:{usePointStyle:true,pointStyle:'line',padding:14,font:{size:11},filter:item=>item.text!=='Zero'}},
+        title:{display:true,text:'All Factors Combined — % Contribution to Weekly Sales (each at its own magnitude)',color:'#e0e7ef',font:{size:14,weight:'600',family:"'Source Sans 3',sans-serif"},align:'start',padding:{bottom:14}},
+        tooltip:{callbacks:{label:c=>c.dataset.label&&c.dataset.label!=='Zero'?`${c.dataset.label}: ${c.parsed.y>0?'+':''}${c.parsed.y}%`:''}}
+      },
+      scales:{
+        x:{...noGrid,ticks:{maxTicksLimit:13}},
+        y:{title:{display:true,text:'% Contribution',color:'#4e5d73'},grid:{color:'rgba(31,46,69,0.5)'},ticks:{callback:v=>`${v>0?'+':''}${v}%`}}
+      }
+    }
+  });
+})();
+
+// ================================================================
+//  CHART 4 — Interactive Toggle (Cumulative % Deviation from Baseline)
+// ================================================================
+const activeLayers=new Set([]);
+const layerOrder=['price','promo','cross','seasonal','trend'];
+const layerColors={price:'#f87171',promo:'#4ade80',cross:'#fbbf24',seasonal:'#c084fc',trend:'#22d3ee'};
+const layerNames={price:'After Price (β₁)',promo:'After Price+Promo (β₁+β₂)',cross:'After +Cross-Price (β₁₋₃)',seasonal:'After +Seasonality (β₁₋₆)',trend:'Full Model (β₁₋₇)'};
+
+// Cumulative contributions in log space, then convert to % deviation from baseline
+// Each level includes all prior levels
+const logCum={
+  price:    weeks.map((_,i)=> cPrice[i]),
+  promo:    weeks.map((_,i)=> cPrice[i]+cPromo[i]),
+  cross:    weeks.map((_,i)=> cPrice[i]+cPromo[i]+cCross[i]),
+  seasonal: weeks.map((_,i)=> cPrice[i]+cPromo[i]+cCross[i]+cSeason[i]),
+  trend:    weeks.map((_,i)=> cPrice[i]+cPromo[i]+cCross[i]+cSeason[i]+cTrend[i]),
+};
+
+// Convert to % deviation: (exp(logCum) - 1) * 100
+const pctCum={};
+for(const key of layerOrder){
+  pctCum[key]=weeks.map((_,i)=>+( ((Math.exp(logCum[key][i])-1)*100).toFixed(2) ));
+}
+
+const insightTexts={
+  price:'<b>① Base Price (β₁) only:</b> The line drops to about −18% below baseline. This is the structural cost of being priced at $17.49. It\'s steady week to week (with small fluctuations from the mid-year price increase). Every other factor will stack on top of this drag.',
+  promo:'<b>② + Promo Lift (β₂):</b> Now the 12 promo weeks spike upward from the price-depressed line. Some promo weeks overcome the price drag entirely and push above zero — meaning the promotion generates enough lift to more than offset the everyday pricing penalty. Non-promo weeks are unchanged.',
+  cross:'<b>③ + Cross-Price (β₃):</b> The whole curve shifts up by ~4–6%. When Private Label is priced above average, consumers switch to Sparkling Ice. This is "free" volume — gains driven by competitor pricing rather than our own spend.',
+  seasonal:'<b>④ + Seasonality (β₄₋₆):</b> The broad arc appears. Summer weeks now swing well above zero (price drag is fully offset by seasonal demand + other factors). Winter weeks remain below. The seasonal effect is why timing matters for price increases — a summer increase is partially masked by strong seasonal demand.',
+  trend:'<b>⑤ + Time Trend (β₇):</b> The full model is complete. You can now see a subtle downward tilt from left to right — the brand is declining ~0.04% per week. Compare the left edge (W1) to the right edge (W52): the gap is the cumulative trend effect. In the old cases view this was invisible; here it\'s clear.'
+};
+
+let tglChart;
+function buildToggleChart(){
+  const datasets=[];
+
+  // Zero reference line (baseline)
+  datasets.push({
+    label:'Baseline (0%)',
+    data:weeks.map(()=>0),
+    borderColor:'rgba(148,163,184,0.5)',
+    borderWidth:1.5,
+    borderDash:[6,4],
+    pointRadius:0,
+    fill:false,
+    order:10
+  });
+
+  // Find highest active layer index
+  let highestActiveIdx=-1;
+  for(let k=layerOrder.length-1;k>=0;k--){
+    if(activeLayers.has(layerOrder[k])){highestActiveIdx=k;break;}
+  }
+
+  // Show each active cumulative layer (earlier layers as dashed history, latest as solid)
+  for(let k=0;k<layerOrder.length;k++){
+    const key=layerOrder[k];
+    if(!activeLayers.has(key)) continue;
+    const isTop = (k===highestActiveIdx);
+    datasets.push({
+      label: layerNames[key],
+      data: pctCum[key],
+      borderColor: layerColors[key],
+      backgroundColor: isTop ? layerColors[key]+'15' : 'transparent',
+      borderWidth: isTop ? 2.5 : 1.5,
+      borderDash: isTop ? [] : [5,4],
+      pointRadius: 0,
+      tension: .35,
+      fill: isTop ? 'origin' : false,
+      order: 5-k
+    });
+  }
+
+  // If nothing selected, show faint ghost of full model
+  if(activeLayers.size===0){
+    datasets.push({
+      label:'Full Model (click ① to start)',
+      data:pctCum.trend,
+      borderColor:'rgba(248,250,252,0.1)',
+      borderWidth:1,
+      borderDash:[3,3],
+      pointRadius:0,
+      tension:.35,
+      fill:false,
+      order:0
+    });
+  }
+
+  if(tglChart){
+    tglChart.data.datasets=datasets;
+    tglChart.update();
+    return;
+  }
+  tglChart=new Chart(document.getElementById('c4'),{
+    type:'line',
+    data:{labels,datasets},
+    options:{
+      responsive:true,
+      interaction:ttip,
+      plugins:{
+        legend:{position:'top',labels:{usePointStyle:true,pointStyle:'line',padding:14,font:{size:11}}},
+        tooltip:{callbacks:{label:c=>{
+          if(c.dataset.label.includes('Baseline')) return 'Baseline: 0%';
+          return `${c.dataset.label}: ${c.parsed.y>0?'+':''}${c.parsed.y.toFixed(1)}%`;
+        }}}
+      },
+      scales:{
+        x:noGrid,
+        y:{
+          title:{display:true,text:'% Deviation from Baseline',color:'#4e5d73'},
+          grid:{color:ctx=>ctx.tick.value===0?'rgba(148,163,184,0.35)':'rgba(31,46,69,0.4)'},
+          ticks:{callback:v=>`${v>0?'+':''}${v}%`}
+        }
+      }
+    }
+  });
+}
+buildToggleChart();
+
+function tgl(btn){
+  const l=btn.dataset.l;
+  const idx=layerOrder.indexOf(l);
+
+  if(activeLayers.has(l)){
+    // Turn off this layer and all layers above it
+    for(let k=idx;k<layerOrder.length;k++) activeLayers.delete(layerOrder[k]);
+  } else {
+    // Turn on this layer and all layers below it (cumulative build-up)
+    for(let k=0;k<=idx;k++) activeLayers.add(layerOrder[k]);
+  }
+
+  // Update button states
+  document.querySelectorAll('.tbtn').forEach(b=>{
+    b.classList.toggle('on',activeLayers.has(b.dataset.l));
+  });
+
+  // Show insight for highest active layer
+  let highest=null;
+  for(let k=layerOrder.length-1;k>=0;k--){
+    if(activeLayers.has(layerOrder[k])){highest=layerOrder[k];break;}
+  }
+  if(highest && insightTexts[highest]){
+    document.getElementById('tgl-msg').innerHTML=insightTexts[highest];
+  } else {
+    document.getElementById('tgl-msg').innerHTML='<b>Baseline = zero (the x-axis).</b> This flat line at 0% represents ~4,200 cases/week — what we\'d sell if price, promos, seasons, competition, and trend didn\'t exist. Click <b>① Base Price</b> to see the first and biggest force acting on sales.';
+  }
+  buildToggleChart();
+}
+
+// ================================================================
+//  CHART 5 — Promo vs. Non-Promo Comparison
+// ================================================================
+(function(){
+  const pw=Array.from(promoWks).sort((a,b)=>a-b);
+  const lbls=pw.map(w=>`W${w}`);
+  const withoutPromo=pw.map(w=>{
+    const i=w-1;
+    return Math.round(Math.exp(cBase[i]+cPrice[i]+cCross[i]+cSeason[i]+cTrend[i]));
+  });
+  const withPromo=pw.map(w=>Math.round(pred[w-1]));
+
+  new Chart(document.getElementById('c5'),{
+    type:'bar',
+    data:{
+      labels:lbls,
+      datasets:[
+        {label:'Without Promo',data:withoutPromo,backgroundColor:'rgba(148,163,184,0.5)',borderRadius:4,barPercentage:.75},
+        {label:'Promo Lift (β₂)',data:withPromo.map((v,j)=>v-withoutPromo[j]),backgroundColor:'rgba(74,222,128,0.65)',borderRadius:{topLeft:4,topRight:4},barPercentage:.75}
+      ]
+    },
+    options:{
+      responsive:true,
+      plugins:{
+        legend:{position:'top',labels:{usePointStyle:true,pointStyle:'rect',padding:16}},
+        tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${caseFmt(c.parsed.y)} cases`}}
+      },
+      scales:{
+        x:{...noGrid,stacked:true},
+        y:{stacked:true,title:{display:true,text:'Cases',color:'#4e5d73'},ticks:{callback:caseFmt},suggestedMin:0}
+      }
+    }
+  });
+})();
+
+// ================================================================
+//  CHART 6 — Annual Attribution Donut
+// ================================================================
+(function(){
+  // Compute annual totals for each additive layer
+  const sum=arr=>arr.reduce((a,b)=>a+b,0);
+  // We attribute in real-space deltas
+  const aBase=sum(realBase);
+  const aPrice=sum(dPrice); // negative
+  const aPromo=sum(dPromo);
+  const aCross=sum(dCross);
+  const aSeason=sum(dSeason);
+  const aTrend=sum(dTrend);
+
+  // For a clean donut, show positive contributions (fold price drag into "net base")
+  const netBase=aBase+aPrice; // base after price
+  const total=netBase+aPromo+aCross+Math.max(aSeason,0)+Math.abs(aTrend);
+  const pcts=[netBase,aPromo,aCross,Math.max(aSeason,0),Math.abs(aTrend)].map(v=>Math.round(v/total*100));
+
+  new Chart(document.getElementById('c6'),{
+    type:'doughnut',
+    data:{
+      labels:['Base Demand (net of price)','Promotional Lift','Cross-Price Gains','Seasonal Boost','Trend Adjustment'],
+      datasets:[{
+        data:pcts,
+        backgroundColor:['rgba(148,163,184,0.6)','rgba(74,222,128,0.6)','rgba(251,191,36,0.6)','rgba(192,132,252,0.6)','rgba(34,211,238,0.6)'],
+        borderColor:'#111827',
+        borderWidth:3,
+        hoverBorderColor:'#f8fafc'
+      }]
+    },
+    options:{
+      responsive:true,
+      cutout:'62%',
+      plugins:{
+        legend:{position:'bottom',labels:{padding:16,usePointStyle:true,pointStyle:'circle',font:{size:12}}},
+        tooltip:{callbacks:{label:c=>`${c.label}: ~${c.parsed}% of annual volume`}}
+      }
+    }
+  });
+})();
+
+// ================================================================
+//  CHART 7 — Dual Elasticity Time Series (two panels)
+// ================================================================
+(function(){
+  // Panel A: Base price effect over time (always on)
+  const priceEffect=weeks.map((_,i)=>{
+    // % change in volume due to price (vs. reference price of $17.00)
+    const refPrice=17.00;
+    return (Math.exp(B1*Math.log(basePrice[i]))-Math.exp(B1*Math.log(refPrice)))/Math.exp(B1*Math.log(refPrice))*100;
+  });
+
+  new Chart(document.getElementById('c7a'),{
+    type:'line',
+    data:{
+      labels,
+      datasets:[
+        {label:'Base Price Effect on Volume (%)',data:priceEffect.map(v=>+v.toFixed(1)),
+         borderColor:'#fb923c',backgroundColor:'rgba(251,146,60,0.1)',borderWidth:2.5,pointRadius:0,tension:.35,fill:true},
+        {label:'Zero Line',data:weeks.map(()=>0),borderColor:'rgba(255,255,255,0.1)',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false}
+      ]
+    },
+    options:{
+      responsive:true,
+      interaction:ttip,
+      plugins:{
+        legend:{display:false},
+        title:{display:true,text:'Base Price Elasticity Effect (β₁ = −1.85) — Structural, Always Present',color:'#fb923c',font:{size:13,weight:'600'},align:'start',padding:{bottom:12}},
+        tooltip:{callbacks:{label:c=>c.datasetIndex===0?`Volume impact: ${c.parsed.y>0?'+':''}${c.parsed.y}%`:''}}
+      },
+      scales:{
+        x:{...noGrid,ticks:{maxTicksLimit:13}},
+        y:{title:{display:true,text:'Volume Impact %',color:'#4e5d73'},grid:{color:'rgba(31,46,69,0.5)'}}
+      }
+    }
+  });
+
+  // Panel B: Promo effect (intermittent spikes)
+  const promoEffect=weeks.map((_,i)=>{
+    if(promoDepth[i]===0) return 0;
+    return (Math.exp(B2*promoDepth[i])-1)*100; // % lift from promo
+  });
+
+  new Chart(document.getElementById('c7b'),{
+    type:'bar',
+    data:{
+      labels,
+      datasets:[{
+        label:'Promo Lift on Volume (%)',
+        data:promoEffect.map(v=>+v.toFixed(1)),
+        backgroundColor:promoEffect.map(v=>v>0?'rgba(167,139,250,0.65)':'transparent'),
+        borderColor:promoEffect.map(v=>v>0?'#a78bfa':'transparent'),
+        borderWidth:1,
+        borderRadius:3,
+        barPercentage:0.85
+      }]
+    },
+    options:{
+      responsive:true,
+      plugins:{
+        legend:{display:false},
+        title:{display:true,text:'Promotional Elasticity Effect (β₂ = 3.20) — Sharp, Intermittent, 2-3× Stronger',color:'#a78bfa',font:{size:13,weight:'600'},align:'start',padding:{bottom:12}},
+        tooltip:{callbacks:{label:c=>c.parsed.y>0?`Promo lift: +${c.parsed.y}%`:''}}
+      },
+      scales:{
+        x:{...noGrid,ticks:{maxTicksLimit:13}},
+        y:{title:{display:true,text:'Volume Lift %',color:'#4e5d73'},grid:{color:'rgba(31,46,69,0.5)'},suggestedMin:0}
+      }
+    }
+  });
+})();
+
+// ================================================================
+//  CHART 8 — What-If Scenario Simulator (REBASED: current = 0%)
+// ================================================================
+let simChart;
+function updateSim(){
+  const dp=parseInt(document.getElementById('s-price').value);
+  const dd=parseInt(document.getElementById('s-promo').value);
+  document.getElementById('v-price').textContent=`${dp>=0?'+':''}${dp}%`;
+  document.getElementById('v-promo').textContent=`${dd>=0?'+':''}${dd} pts`;
+
+  const priceMult=1+dp/100;
+  const depthShift=dd/100;
+
+  // Compute new prediction and express as % change from current
+  const newPred=weeks.map((_,i)=>{
+    const newLogPrice=Math.log(basePrice[i]*priceMult);
+    const newDepth=Math.max(0,promoDepth[i]+depthShift);
+    return Math.exp(B0+B1*newLogPrice+B2*newDepth+cCross[i]+cSeason[i]+cTrend[i]);
+  });
+
+  const pctChange=weeks.map((_,i)=>+( ((newPred[i]-pred[i])/pred[i]*100).toFixed(2) ));
+
+  // Also compute the isolated price-only and promo-only % impacts for decomposition
+  const priceOnlyPred=weeks.map((_,i)=>{
+    const newLogPrice=Math.log(basePrice[i]*priceMult);
+    return Math.exp(B0+B1*newLogPrice+B2*promoDepth[i]+cCross[i]+cSeason[i]+cTrend[i]);
+  });
+  const promoOnlyPred=weeks.map((_,i)=>{
+    const newDepth=Math.max(0,promoDepth[i]+depthShift);
+    return Math.exp(B0+B1*Math.log(basePrice[i])+B2*newDepth+cCross[i]+cSeason[i]+cTrend[i]);
+  });
+  const pctPriceOnly=weeks.map((_,i)=>+( ((priceOnlyPred[i]-pred[i])/pred[i]*100).toFixed(2) ));
+  const pctPromoOnly=weeks.map((_,i)=>+( ((promoOnlyPred[i]-pred[i])/pred[i]*100).toFixed(2) ));
+
+  const datasets=[
+    // Zero line (current forecast)
+    {label:'Current Forecast (0%)',data:weeks.map(()=>0),borderColor:'rgba(148,163,184,0.4)',borderWidth:1.5,borderDash:[6,4],pointRadius:0,fill:false,order:10},
+  ];
+
+  // Show decomposed effects if both sliders are nonzero
+  if(dp!==0 && dd!==0){
+    datasets.push(
+      {label:`Price effect (${dp>=0?'+':''}${dp}%)`,data:pctPriceOnly,borderColor:'#fb923c',backgroundColor:'rgba(251,146,60,0.08)',borderWidth:1.8,borderDash:[4,3],pointRadius:0,tension:.35,fill:false,order:3},
+      {label:`Promo effect (${dd>=0?'+':''}${dd} pts)`,data:pctPromoOnly,borderColor:'#a78bfa',backgroundColor:'rgba(167,139,250,0.08)',borderWidth:1.8,borderDash:[4,3],pointRadius:0,tension:.35,fill:false,order:2},
+    );
+  }
+
+  // Combined net effect
+  if(dp!==0 || dd!==0){
+    datasets.push({
+      label:'Net Impact',
+      data:pctChange,
+      borderColor:'#f8fafc',
+      backgroundColor:pctChange.map(v=>v>=0?'rgba(74,222,128,0.08)':'rgba(248,113,113,0.08)'),
+      borderWidth:2.5,
+      pointRadius:0,
+      tension:.35,
+      fill:'origin',
+      order:1,
+      segment:{
+        borderColor:ctx=>{
+          const y0=ctx.p0.parsed.y, y1=ctx.p1.parsed.y;
+          return (y0+y1)/2>=0?'#4ade80':'#f87171';
+        },
+        backgroundColor:ctx=>{
+          const y0=ctx.p0.parsed.y, y1=ctx.p1.parsed.y;
+          return (y0+y1)/2>=0?'rgba(74,222,128,0.10)':'rgba(248,113,113,0.10)';
+        }
+      }
+    });
+  }
+
+  // Annual impact
+  const currTotal=pred.reduce((a,b)=>a+b,0);
+  const newTotal=newPred.reduce((a,b)=>a+b,0);
+  const delta=newTotal-currTotal;
+  const deltaPct=((delta/currTotal)*100).toFixed(1);
+  const sign=delta>=0?'+':'';
+
+  let msg = `<b>Scenario:</b> Base price ${dp>=0?'+':''}${dp}% | Promo depth ${dd>=0?'+':''}${dd} pts → `;
+  msg += `<b>Annual volume change: ${sign}${caseFmt(Math.round(delta))} cases (${sign}${deltaPct}%)</b>. `;
+  if(dp===0&&dd===0) msg = '<b>Zero line = your current forecast.</b> Drag the sliders — everything above the line is incremental volume gained, everything below is volume lost. ';
+  else if(dp>0&&dd>0) msg += 'Notice the steady negative band from the price increase and the positive spikes from deeper promos — this is the Hi-Lo trade-off, decomposed.';
+  else if(dp>0&&dd<=0) msg += 'Pure price increase — the line sits uniformly below zero. This is the base elasticity (β₁) at work: a constant structural drag.';
+  else if(dp<0) msg += 'Price decrease — uniform lift above zero through the base elasticity.';
+  else if(dd>0) msg += 'Deeper promos only — notice the spikes appear exclusively in the 12 promo weeks while non-promo weeks stay at zero. The two elasticities are perfectly separated.';
+  else if(dd<0) msg += 'Shallower promos — the spikes that existed in promo weeks are now reduced or eliminated.';
+
+  document.getElementById('sim-msg').innerHTML=msg;
+
+  if(simChart){simChart.data.datasets=datasets;simChart.update();return;}
+  simChart=new Chart(document.getElementById('c8'),{
+    type:'line',
+    data:{labels,datasets},
+    options:{
+      responsive:true,
+      interaction:ttip,
+      plugins:{
+        legend:{position:'top',labels:{usePointStyle:true,pointStyle:'line',padding:14,font:{size:11}}},
+        tooltip:{callbacks:{label:c=>{
+          if(c.dataset.label.includes('Current')) return 'Current forecast: 0%';
+          return `${c.dataset.label}: ${c.parsed.y>0?'+':''}${c.parsed.y.toFixed(1)}%`;
+        }}}
+      },
+      scales:{
+        x:noGrid,
+        y:{
+          title:{display:true,text:'% Change from Current Forecast',color:'#4e5d73'},
+          grid:{color:ctx=>ctx.tick.value===0?'rgba(148,163,184,0.3)':'rgba(31,46,69,0.4)'},
+          ticks:{callback:v=>`${v>0?'+':''}${v}%`}
+        }
+      }
+    }
+  });
+}
+updateSim();
+</script>
+</body>
+</html>

@@ -140,9 +140,96 @@ This is a deliberate design choice. Promotional depth is defined as a percentage
 
 The seasonal dummies (β₄–β₆), cross-price effect (β₃), and time trend (β₇) are standard controls drawn from the same market response modeling tradition. Each one isolates a confounding factor so that β₁ and β₂ reflect the *true* consumer response to price and promotions — not artifacts of summer demand spikes or competitive pricing moves.
 
+### Why Some Variables Use Log and Others Don't
+
+A natural question when looking at the equation is: *why do Base_Price_SI and Price_PL have "Log" in front of them, but Promo_Depth_SI, the seasonal terms, and Time do not?* This isn't arbitrary — each choice reflects a specific mathematical reason and a specific business interpretation. This is one of those things that gets glossed over in textbooks but is really important to internalize.
+
+#### The Math: Why Log Creates a "Percentage" Interpretation
+
+This comes from a calculus property. The derivative of log(x) is 1/x, which means:
+
+> A small change in log(x) ≈ Δx/x = the **percentage change** in x
+
+So when you write Log(Sales) = β₁ · Log(Price), the math is essentially saying:
+
+> ΔSales/Sales = β₁ × ΔPrice/Price
+
+Which is:
+
+> **% change in Sales = β₁ × % change in Price**
+
+That's why β₁ is directly an elasticity. No extra math needed — the log transformation does the work for you.
+
+#### What Happens WITHOUT Log: The Promo_Depth_SI Case
+
+When you write Log(Sales) = β₂ · Promo_Depth_SI, the left side is still logged, but the right side is in raw units. So the math becomes:
+
+> ΔSales/Sales = β₂ × ΔPromo_Depth
+
+Which is:
+
+> **% change in Sales = β₂ × absolute change in promo depth**
+
+This is called a *semi-elasticity*: the left side is in percentages (because it's logged), but the right side is in raw units (because it's not).
+
+#### What "Point" Means
+
+A "point" is simply one unit of whatever the variable is measured in. If Promo_Depth_SI is measured as a proportion (say 20% discount = 0.20), then one "point" is 0.01 (one percentage point). So β₂ tells you: "for each additional percentage point of discount, sales change by β₂%."
+
+#### A Concrete Example to Make It Click
+
+Say β₁ (base price elasticity) = −2.5 and β₂ (promo lift) = 0.03:
+
+> **Price goes up 1%** → Sales drop 2.5%
+> *(percent to percent, because both sides are logged)*
+
+> **Promo depth increases by 1 percentage point** (say from 15% to 16% off) → Sales increase by 3%
+> *(point to percent, because only the left side is logged)*
+
+The reason you don't log Promo_Depth_SI isn't just the zero problem — it's that the **business question is different**. For pricing, you think in percentages ("we raised price 3%"). For promos, you think in points ("we ran a 20-point discount vs. a 15-point discount"). The model specification matches how commercial teams actually make decisions.
+
+#### How This Applies to Each Variable in Our Equation
+
+**Variables with Log — continuous economic prices (β₁ and β₃):**
+
+**Log(Base_Price_SI)** and **Log(Price_PL)** are continuous price variables where the business question is inherently about percentages. When a pricing leader asks "what happens if we raise price by 5%?", they're thinking in percentage terms. The log-log specification matches this directly: β₁ tells you "a 1% increase in Sparkling Ice price leads to a β₁% change in volume," and β₃ tells you "a 1% increase in Private Label price leads to a β₃% change in Sparkling Ice volume." Both elasticities live on the same scale, making them directly comparable.
+
+**Variables without Log — and why each one stays in levels:**
+
+**Promo_Depth_SI (β₂)** stays unlogged for two reasons. First, promotional depth is frequently zero (most weeks have no promotion), and Log(0) is mathematically undefined — you simply cannot take the log of zero without artificial workarounds that distort the interpretation. Second, promo depth is already measured as a percentage (e.g., 0.20 = 20% off), so the business question is naturally about *points*, not *percentages of percentages*. Because the left side of the equation is still in logs but the right side is in levels, the coefficient β₂ becomes a semi-elasticity: "each additional percentage point of discount depth drives a β₂% increase in sales volume." This is exactly how commercial teams think about promotions — "we went from a 15-point to a 20-point discount, what was the lift?"
+
+**Spring, Summer, Fall (β₄–β₆)** are binary dummy variables that are either 0 (not that season) or 1 (that season). You cannot take the log of zero, so these must remain in levels. Their coefficients represent the percentage shift in sales relative to the omitted baseline season (Winter). For example, if β₅ = 0.15, Summer sales are approximately 16% higher than Winter sales (calculated as e^0.15 − 1), after controlling for all other factors.
+
+**Time (β₇)** is a trend index (1, 2, 3, ...) that captures whether the brand is growing or declining over the data window. Keeping it in levels means each time period adds a constant percentage growth or decline — the structural assumption you want when asking "is this brand on an upward or downward trajectory?" Taking Log(Time) would imply growth that decelerates logarithmically, which is a different and less appropriate structural assumption for a two-year analysis window.
+
+#### The Organizing Rule
+
+| Variable Type | Log? | Interpretation | Example |
+|---|---|---|---|
+| Continuous economic prices | Yes (Log) | **Elasticity:** % change in Sales per 1% change in variable | β₁ = −2.5 means a 1% price increase → 2.5% volume decline |
+| Measures that can be zero (promos, dummies) | No (Levels) | **Semi-elasticity:** % change in Sales per 1-point change in variable | β₂ = 0.03 means each additional point of promo depth → 3% volume lift |
+| Trend indices | No (Levels) | **Semi-elasticity:** % change in Sales per period | β₇ = −0.005 means volume declines ~0.5% per week, all else equal |
+
+This hybrid specification — log-log for structural price levers, linear for tactical and control variables — is what gives our model both mathematical elegance and practical interpretability.
+
 ### The Bottom Line
 
 When we write Log(Sales) = β₀ + β₁·Log(Price) + ..., we're not inventing a formula. We're applying the most battle-tested specification in pricing analytics — one that connects Alfred Marshall's 1890 insight to Henry Schultz's 1938 empirical methods to today's Circana scanner data — and extending it with modern controls for promotions, seasonality, and competition. The model's pedigree is its credibility.
+
+### Visual Companion: Peeling the Onion
+
+To see how the equation works in practice — how each β contributes to sales, how the layers stack up week by week, and why dual elasticity matters — refer to the **Sparkling Ice Sales Decomposition Visual Guide** (interactive HTML companion). It contains eight visualizations using example BJ's data:
+
+1. **Observed vs. Model Prediction** — How well the model tracks real sales
+2. **Single-Week Waterfall** — Anatomy of one week, showing each factor's contribution in cases
+3. **52-Week Stacked Decomposition** — The full year, layer by layer
+4. **Interactive Layer Toggle** — Build the sales curve yourself by adding one factor at a time
+5. **Promo vs. Non-Promo Comparison** — Isolating the pure promotional lift
+6. **Annual Volume Attribution** — Who gets credit for total volume
+7. **Dual Elasticity Time Series** — Base price effect (structural, always-on) vs. promotional effect (sharp, intermittent) side by side
+8. **What-If Scenario Simulator** — Drag sliders to change price and promo depth and watch how each lever independently affects volume
+
+These visualizations make concrete what the equation describes abstractly: every week's sales is the sum of identifiable forces, and our methodology lets us peel apart those forces to see each one clearly.
 
 ---
 
