@@ -185,13 +185,33 @@ scp /path/to/local/bjs.csv azureuser@<VM_PUBLIC_IP_OR_HOSTNAME>:/home/azureuser/
 scp /path/to/local/sams.csv azureuser@<VM_PUBLIC_IP_OR_HOSTNAME>:/home/azureuser/tr-price-elasticity-bayesian/data/
 ```
 
-Multiple files at once:
+Multiple files at once (Linux/macOS bash **only**, brace expansion):
 
 ```bash
 scp /path/to/local/{bjs.csv,sams.csv,costco.csv} azureuser@<VM_PUBLIC_IP_OR_HOSTNAME>:/home/azureuser/tr-price-elasticity-bayesian/data/
 ```
 
-If you use an SSH key:
+Windows (PowerShell): **do not** use `{a,b,c}` brace expansion. Instead, list each file explicitly (you can pass multiple source paths in one `scp` command):
+
+```powershell
+scp -i C:/Users/atulsehgal/.ssh/vm-mcmc-bayesian_key.pem `
+  C:/repos/tr-price-elasticity-bayesian/data/bjs.csv `
+  C:/repos/tr-price-elasticity-bayesian/data/sams.csv `
+  C:/repos/tr-price-elasticity-bayesian/data/costco.csv `
+  azureuser@20.94.79.51:/home/azureuser/tr-price-elasticity-bayesian/data/
+```
+
+Notes (Windows PowerShell):
+
+- The `-i <path-to-key.pem>` is required if your VM is configured for **SSH key auth** (common for Azure VMs).
+- Backticks (`` ` ``) are PowerShell line-continuations; you can also put the whole command on one line.
+- Alternative if all your files are in one folder:
+
+```powershell
+scp -i C:/Users/atulsehgal/.ssh/vm-mcmc-bayesian_key.pem C:/repos/tr-price-elasticity-bayesian/data/*.csv azureuser@20.94.79.51:/home/azureuser/tr-price-elasticity-bayesian/data/
+```
+
+If you use an SSH key (Linux/macOS):
 
 ```bash
 scp -i /path/to/key.pem /path/to/local/bjs.csv azureuser@<VM_PUBLIC_IP_OR_HOSTNAME>:/home/azureuser/tr-price-elasticity-bayesian/data/
