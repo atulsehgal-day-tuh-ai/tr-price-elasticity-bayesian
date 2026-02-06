@@ -28,17 +28,18 @@ This guide walks through every major design decision in our analysis, written fo
 
 1. [The Big Picture: What Is Price Elasticity and Why Does It Matter?](#1-the-big-picture)
 2. [Why Bayesian Statistics? (And What's Wrong with the Classical Way)](#2-why-bayesian)
-3. [How the Engine Works: Markov Chain Monte Carlo (MCMC)](#3-mcmc)
-4. [Why Powerful Compute Matters](#4-compute)
-5. [Two Elasticities, Not One: Base Price vs. Promotions](#5-two-elasticities)
-6. [Our Promotion Modeling Approach](#6-promotion-modeling)
-7. [Brand-Level Analysis: Why We Don't Need UPC-Level Data](#7-brand-level)
-8. [How Seasonality Is Captured](#8-seasonality)
-9. [How Holidays Are Captured](#9-holidays)
-10. [Isolating the Pure Price Effect](#10-isolating-price)
-11. [Why Hierarchical Models? The Power of Partial Pooling](#11-hierarchical)
-12. [Questions This Analysis Will Answer](#12-questions)
-13. [Summary: Why This Approach Is Best-in-Class](#13-summary)
+3. [Theoretical Foundations: Why the Log-Log Demand Model?](#3-theoretical-foundations)
+4. [How the Engine Works: Markov Chain Monte Carlo (MCMC)](#4-mcmc)
+5. [Why Powerful Compute Matters](#5-compute)
+6. [Two Elasticities, Not One: Base Price vs. Promotions](#6-two-elasticities)
+7. [Our Promotion Modeling Approach](#7-promotion-modeling)
+8. [Brand-Level Analysis: Why We Don't Need UPC-Level Data](#8-brand-level)
+9. [How Seasonality Is Captured](#9-seasonality)
+10. [How Holidays Are Captured](#10-holidays)
+11. [Isolating the Pure Price Effect](#11-isolating-price)
+12. [Why Hierarchical Models? The Power of Partial Pooling](#12-hierarchical)
+13. [Questions This Analysis Will Answer](#13-questions)
+14. [Summary: Why This Approach Is Best-in-Class](#14-summary)
 
 ---
 
@@ -96,14 +97,105 @@ For a pricing decision worth millions of dollars, the Bayesian approach gives yo
 
 ---
 
-<a name="3-mcmc"></a>
-## 3. How the Engine Works: Markov Chain Monte Carlo (MCMC)
+<a name="3-theoretical-foundations"></a>
+## 3. Theoretical Foundations: Why the Log-Log Demand Model?
+
+### The Equation at the Heart of Our Analysis
+
+Before we explain *how* the Bayesian engine works, it's worth understanding *what* it's computing — and why the demand equation takes the form it does. This isn't an arbitrary formula. It's the product of over 130 years of economic thought, refined by decades of retail analytics practice.
+
+Our model estimates the following relationship (using the actual variables we fit in the pipeline):
+
+> **Log(Volume_Sales_SI) = β₀ + β₁·Log(Base_Price_SI) + β₂·Promo_Depth_SI + β₃·Log(Price_PL) + β₄·Spring + β₅·Summer + β₆·Fall + β₇·Week_Number + ε**
+
+Here, **Sales means Sparkling Ice Volume Sales** (Circana `Volume Sales`, normalized across pack sizes). We model it in log space as `Log_Volume_Sales_SI`.
+`Unit Sales` is still used — but only for unit-consistent **price denominators** (e.g., Avg Price = Dollar Sales ÷ Unit Sales; Base Price = Base Dollar Sales ÷ Base Unit Sales).
+
+The defining feature is the **log-log structure**: both Sales and Base Price are expressed as logarithms. This single design choice carries enormous analytical power — and it didn't happen by accident.
+
+### Where It Comes From: A Brief Intellectual History
+
+**The concept (1890s) — Alfred Marshall.** The idea of price elasticity of demand — that consumer response to price changes can be measured as a ratio of percentage changes — was formalized by Alfred Marshall in his *Principles of Economics* (1890). Marshall gave us the language: "If a 1% price increase causes a 2% drop in quantity demanded, the elasticity is −2." That concept is the foundation everything else builds on.
+
+**The statistical method (1930s) — Henry Schultz.** The leap from concept to measurement came from Henry Schultz at the University of Chicago. In his 1938 work *The Theory and Measurement of Demand*, Schultz was among the first to systematically fit log-linear demand functions to real data — estimating elasticities for commodities like sugar, wheat, and cotton. He demonstrated that when you take the logarithm of both quantity and price, the regression coefficient *directly equals* the elasticity. No further transformation needed. This elegant property made the log-log form the natural choice for empirical demand estimation.
+
+**The econometric framework (1950s–70s) — Wold, Klein, and others.** Economists like Herman Wold and Nobel laureate Lawrence Klein built sophisticated simultaneous equation models of consumer demand, establishing log-linear specifications as the standard toolkit for applied economics. Their work gave the log-log model its rigorous theoretical grounding in utility maximization and consumer choice theory.
+
+**The CPG revolution (1980s–2000s) — Scanner data meets the model.** The explosion of point-of-sale scanner data (the predecessors to today's Circana/IRI datasets) transformed the log-log model from an academic tool into the industry standard for retail pricing analytics. Researchers like **Robert Blattberg and Ken Wisniewski** at Chicago, and **Dominique Hanssens, Leonard Parsons, and Randall Schultz** in their influential textbook *Market Response Models* (1990, updated 2001), codified the log-log specification as the default for CPG price elasticity estimation. Their reasoning was both theoretical and practical, as described below.
+
+### Why Log-Log Works So Well for Pricing
+
+The log-log form isn't just tradition — it captures real consumer behavior better than alternatives:
+
+**Constant elasticity.** In a log-log model, the elasticity is the same whether you're analyzing a price move from $15 to $16 or from $20 to $21. This "constant percentage response" matches how consumers actually think about prices — a $1 increase feels very different on a $5 product than on a $50 product, but a 5% increase feels roughly the same regardless of the starting price.
+
+**Diminishing returns built in.** The logarithmic transformation naturally enforces diminishing returns — a $1 price cut generates more incremental volume when the price is low than when it's high. This matches economic intuition without needing to add extra complexity to the model.
+
+**Non-negative predictions.** Because the model predicts *log* of sales, the actual sales prediction (obtained by exponentiating) is always positive. You'll never get the absurd result of a model predicting negative sales volume.
+
+**Immediate interpretability.** The coefficient β₁ *is* the elasticity. When we report "base price elasticity = −1.85," that number came directly from the model — no post-processing required. This makes the results transparent and auditable.
+
+### Our Extension: The Hybrid Log-Linear Specification
+
+Our equation extends the classic log-log form in one important way: the **promotional depth variable (β₂) enters linearly**, not in logs. This makes our model a "hybrid log-linear" specification — strategic price in logs, tactical promotions in levels.
+
+This is a deliberate design choice. Promotional depth is defined as a percentage (e.g., −0.10 means a 10% discount), and it's already on a scale where a linear relationship makes sense. The coefficient β₂ becomes a *semi-elasticity*: a 1 percentage-point increase in discount depth produces a β₂% change in sales volume. This clean separation — log-log for the structural price lever, linear for the tactical promo lever — is what makes our dual-elasticity framework work.
+
+The seasonal dummies (β₄–β₆), cross-price effect (β₃), and time trend (β₇) are standard controls drawn from the same market response modeling tradition. Each one isolates a confounding factor so that β₁ and β₂ reflect the *true* consumer response to price and promotions — not artifacts of summer demand spikes or competitive pricing moves.
+
+### The Bottom Line
+
+When we write Log(Volume Sales) = β₀ + β₁·Log(Price) + ..., we're not inventing a formula. We're applying the most battle-tested specification in pricing analytics — one that connects Alfred Marshall's 1890 insight to Henry Schultz's 1938 empirical methods to today's Circana scanner data — and extending it with modern controls for promotions, seasonality, and competition. The model's pedigree is its credibility.
+
+---
+
+<a name="4-mcmc"></a>
+## 4. How the Engine Works: Markov Chain Monte Carlo (MCMC)
 
 ### Why We Need a Special Engine
 
 In a simple classical regression, you can solve for the answer with a formula — plug in the data, do some matrix algebra, and the coefficients pop out instantly. Bayesian models don't have that luxury. We're not solving for a single answer; we're mapping out an entire *landscape of plausible answers*, weighted by how well each one fits the data and the prior knowledge. For a model with 8–10 parameters (base elasticity, promo elasticity, cross-price effect, three seasonal effects, time trend, intercept, noise), that landscape is a complex, 10-dimensional surface. There is no formula to describe it directly.
 
 So we use a technique called **Markov Chain Monte Carlo (MCMC)** — a clever way to *explore* that landscape by taking a guided random walk through it.
+
+### Where the Landscape Comes From: The Demand Equation
+
+Before the scouts can explore, there has to be a landscape. That landscape is created by the **demand equation** — the mathematical claim our model makes about how the world works:
+
+> **Log(Volume_Sales_SI) = β₀ + β₁·Log(Base_Price_SI) + β₂·Promo_Depth_SI + β₃·Log(Price_PL) + β₄·Spring + β₅·Summer + β₆·Fall + β₇·Week_Number + ε**
+
+Think of this equation as the **blueprint for the terrain itself**. Each β (beta) coefficient is one dimension of the landscape. Our model has 8 betas plus a noise term (ε), so the scouts are navigating a 9-dimensional mountain range — impossible to visualize, but mathematically well-defined.
+
+**What Each β Represents on the Map**
+
+Imagine each beta as a compass axis the scout must navigate simultaneously:
+
+| Coefficient | What the Scout Is Searching For | Plain English |
+|---|---|---|
+| **β₀** (Intercept) | The baseline altitude — how high the ground is before any pricing or seasonal factors kick in | "How much do we sell if everything is at its reference level?" |
+| **β₁** · Log(Base_Price_SI) | How steeply the terrain drops when Sparkling Ice's own price rises | "Our own price elasticity — how much volume do we lose per 1% price increase?" |
+| **β₂** · Promo_Depth_SI | How much the terrain rises when we run a deeper promotion | "The promo lift — how much extra volume does each point of discount depth drive?" |
+| **β₃** · Log(Price_PL) | How the terrain shifts when Private Label competitors change their price | "Cross-price elasticity — do we gain volume when the store brand gets more expensive?" |
+| **β₄, β₅, β₆** (Seasonal) | Ridges and valleys that repeat across the calendar | "Do we sell more in Summer? Less in Fall? How big are the seasonal swings?" |
+| **β₇** · Week_Number | A gentle slope that tilts the entire landscape over the data window | "Is the brand growing or declining over time, independent of price and promos?" |
+| **ε** (Noise) | The fog density — how much random variation blurs the true terrain | "How much unexplained noise is in weekly sales data?" |
+
+**How the Equation Creates the Landscape**
+
+Here's the key insight: **the equation defines what "altitude" means at every point.**
+
+When a scout stands at a particular spot — say, β₁ = −2.5, β₂ = 0.8, β₃ = +0.4, and so on — the equation takes those values, runs them against every week of actual Circana sales data, and asks: *"If these were the true elasticities, how likely is it that we'd observe the sales numbers we actually saw?"*
+
+- If β₁ = −2.5 predicts sales patterns that closely match reality → **high altitude**. The scout marks this as plausible.
+- If β₁ = −0.1 implies price has almost no effect (which contradicts the data showing clear price response) → **low altitude**. The scout moves on.
+
+The priors we set in the previous section act as the **starting elevation of the terrain** before the data sculpts it. They gently raise the ground around values we believe are reasonable (e.g., negative price elasticity) and lower it around values we consider implausible (e.g., raising price *increases* volume). The data then carves the final peaks and valleys.
+
+**Why This Matters for Interpretation**
+
+Once all four scouts finish exploring and we collect our 8,000 samples, we don't get one answer for β₁. We get a **distribution** — a histogram of the 8,000 places the scouts visited along the β₁ axis. That histogram *is* our answer. Its center tells us the most likely elasticity, and its width tells us how certain we are.
+
+So when the final output says **"Sparkling Ice base price elasticity at BJ's is −2.3 with a 94% credible interval of [−3.1, −1.6],"** what that really means is: *all four scouts, exploring independently from different starting points, consistently found themselves in terrain where β₁ was between −3.1 and −1.6, spending most of their time near −2.3.*
 
 ### The Treasure Hunt Analogy
 
@@ -147,8 +239,8 @@ If both checks pass — and they should for our model — we can trust the poste
 
 ---
 
-<a name="4-compute"></a>
-## 4. Why Powerful Compute Matters
+<a name="5-compute"></a>
+## 5. Why Powerful Compute Matters
 
 ### The Computational Challenge
 
@@ -186,8 +278,8 @@ The return is clear: a modest compute investment enables an analytical capabilit
 
 ---
 
-<a name="5-two-elasticities"></a>
-## 5. Two Elasticities, Not One: Base Price vs. Promotions
+<a name="6-two-elasticities"></a>
+## 6. Two Elasticities, Not One: Base Price vs. Promotions
 
 ### The Problem with a Single Elasticity Number
 
@@ -240,8 +332,8 @@ This is the precision that turns good pricing analysis into great pricing strate
 
 ---
 
-<a name="6-promotion-modeling"></a>
-## 6. Our Promotion Modeling Approach
+<a name="7-promotion-modeling"></a>
+## 7. Our Promotion Modeling Approach
 
 ### What Circana Provides
 
@@ -274,8 +366,8 @@ For now, the single Promotional Depth variable gives us exactly the signal we ne
 
 ---
 
-<a name="7-brand-level"></a>
-## 7. Brand-Level Analysis: Why We Don't Need UPC-Level Data
+<a name="8-brand-level"></a>
+## 8. Brand-Level Analysis: Why We Don't Need UPC-Level Data
 
 ### The Question
 
@@ -311,8 +403,8 @@ By modeling at the brand level, we get stable estimates based on a complete time
 
 ---
 
-<a name="8-seasonality"></a>
-## 8. How Seasonality Is Captured
+<a name="9-seasonality"></a>
+## 9. How Seasonality Is Captured
 
 ### Why Seasonality Matters
 
@@ -343,8 +435,8 @@ Together, the seasonal dummies and time trend ensure that the price elasticity c
 
 ---
 
-<a name="9-holidays"></a>
-## 9. How Holidays Are Captured
+<a name="10-holidays"></a>
+## 10. How Holidays Are Captured
 
 ### The Holiday Effect in CPG Data
 
@@ -372,8 +464,8 @@ If future analysis is conducted with a longer time series (3+ years of data), we
 
 ---
 
-<a name="10-isolating-price"></a>
-## 10. Isolating the Pure Price Effect
+<a name="11-isolating-price"></a>
+## 11. Isolating the Pure Price Effect
 
 ### The Core Challenge in Pricing Analysis
 
@@ -406,8 +498,8 @@ This is why we say the elasticities from our model reflect the *true* consumer r
 
 ---
 
-<a name="11-hierarchical"></a>
-## 11. Why Hierarchical Models? The Power of Partial Pooling
+<a name="12-hierarchical"></a>
+## 12. Why Hierarchical Models? The Power of Partial Pooling
 
 ### The Problem: Multiple Retailers, Limited Data
 
@@ -444,8 +536,8 @@ This is an insight that neither a combined model nor separate models can provide
 
 ---
 
-<a name="12-questions"></a>
-## 12. Questions This Analysis Will Answer
+<a name="13-questions"></a>
+## 13. Questions This Analysis Will Answer
 
 ### Strategic Questions (Using Base Price Elasticity)
 
@@ -497,12 +589,14 @@ We calculate the margin gained from a base price increase, convert it into promo
 
 ---
 
-<a name="13-summary"></a>
-## 13. Summary: Why This Approach Is Best-in-Class
+<a name="14-summary"></a>
+## 14. Summary: Why This Approach Is Best-in-Class
 
 Our approach to measuring Sparkling Ice price elasticity isn't just a regression — it's a carefully designed analytical framework where every design choice serves a specific purpose.
 
 **Bayesian over Classical** — because we need honest uncertainty quantification and direct probability statements for million-dollar decisions, not just point estimates and p-values.
+
+**Log-Log Demand Model** — because 130 years of economic theory and decades of CPG scanner-data research have proven the constant-elasticity specification to be the most reliable, interpretable, and theoretically grounded framework for pricing analytics.
 
 **MCMC with NUTS Sampling** — because Bayesian models require efficient numerical exploration of high-dimensional parameter spaces, and NUTS is the state-of-the-art algorithm for doing this reliably and quickly.
 

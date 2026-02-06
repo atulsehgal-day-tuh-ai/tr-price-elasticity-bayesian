@@ -301,6 +301,38 @@ print(f"Base price elasticity: {results.base_elasticity.mean:.3f}")
 print(f"Promo elasticity: {results.promo_elasticity.mean:.3f}")
 ```
 
+#### Model equation (V2 dual-elasticity; conceptual)
+
+The core demand model is fit on weekly data in log space:
+
+\[
+Log\_Volume\_Sales\_{SI,t} = \alpha
++ \beta_{base} \cdot Log\_Base\_Price\_{SI,t}
++ \beta_{promo} \cdot Promo\_Depth\_{SI,t}
++ \beta_{cross} \cdot Log\_Price\_{PL,t}
++ \beta_{spring} \cdot Spring_t
++ \beta_{summer} \cdot Summer_t
++ \beta_{fall} \cdot Fall_t
++ \beta_{time} \cdot Week\_Number_t
++ \epsilon_t
+\]
+
+with \(\epsilon_t \sim \mathcal{N}(0, \sigma)\).
+
+**Variables (matches the prepared dataset columns):**
+- **Outcome**: `Log_Volume_Sales_SI` (log of Sparkling Ice `Volume_Sales_SI`)
+- **Base price (strategic)**: `Log_Base_Price_SI` (log of `Base_Price_SI`)
+- **Promotion (tactical)**: `Promo_Depth_SI = (Avg_Price_SI / Base_Price_SI) - 1` (negative when discounted)
+- **Cross price (private label)**: `Log_Price_PL`
+- **Seasonality**: `Spring`, `Summer`, `Fall` (winter is the implicit baseline)
+- **Trend**: `Week_Number` (weeks since first observation)
+
+**Important:** `Unit Sales` is **not** the dependent variable. It is used to compute price denominators:
+- `Avg_Price_SI = Dollar_Sales_SI / Unit_Sales_SI`
+- `Base_Price_SI = Base_Dollar_Sales_SI / Base_Unit_Sales_SI`
+
+In hierarchical mode, the intercept and/or elasticities can vary by retailer with partial pooling.
+
 ### Probability Statements
 
 ```python
