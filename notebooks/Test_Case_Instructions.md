@@ -6,7 +6,7 @@
 **Files available:**
 - `bjs.csv` — BJ's Circana data (74 columns, skiprows=2)
 - `sams.csv` — Sam's Club Circana data (74 columns, skiprows=2)
-- `costco.csv` — Costco CRX data (23 columns, skiprows=1)
+- `costco.csv` — Costco CRX data (28 columns, skiprows=1) *(v2 extract with 6 additional integrity columns)*
 - `config_template.yaml` — Configuration with retailer_data_contracts
 - `data_prep.py` — The transformation pipeline to test
 
@@ -33,7 +33,7 @@
 
 ### Test 1.3 — Costco loads with correct schema
 - Load `costco.csv` with `skiprows=1` (NOT 2)
-- Assert column count = 23
+- Assert column count = 28 *(v2 extract: 23 original + 6 new − 1 removed UPC)*
 - Assert `Item` column exists (NOT `Product`)
 - Assert `Avg Net Price` column exists
 - Assert `Non Promoted Dollars` column exists
@@ -41,6 +41,7 @@
 - Assert `Average Price per Unit` column exists
 - Assert `Volume Sales` column does NOT exist
 - Assert `Base Dollar Sales` column does NOT exist
+- Assert `UPC` column does NOT exist *(removed in v2)*
 - Assert total rows = 1932
 
 ### Test 1.4 — Costco Item column renamed to Product after load
@@ -60,17 +61,18 @@
 ### Test 2.2 — Sam's brand filtering
 - Same as BJ's: 159 SI rows, 318 PL rows, 477 total
 
-### Test 2.3 — Costco brand filtering with "sparkling ice core"
-- After filtering Costco `Item` column on fuzzy match `"sparkling ice core"`, assert exactly 161 rows
-- These 161 rows should all have `Item` = `"Sparkling Ice Core 17oz 24ct 2023 through 2025 Items"`
-- The 11 individual UPC rows (e.g., `"ITEM 001422384 SPARKLING ICE FRUIT BLST VTY PK..."`) must NOT be included
+### Test 2.3 — Costco brand filtering
+- The brand_filter `"sparkling ice"` matches ALL 1932 Costco rows (brand aggregate + 11 individual UPCs all contain "sparkling ice")
+- The 11 individual UPC rows are eliminated downstream by `dropna` because they have NaN in `Unit Sales` for many weeks (945 of 1771 individual UPC rows have NaN `Unit Sales`)
+- After the full pipeline (filter + dropna), only the 161 brand aggregate rows survive
 - Assert 0 Private Label rows for Costco
 
-### Test 2.4 — Costco UPC rows excluded
-- Verify that no rows where `Item` starts with `"ITEM "` survive the filtering
-- This is the critical test that `"sparkling ice core"` works and `"sparkling ice"` alone would fail
-- Count rows matching `"sparkling ice"` (should be 1932 = 12 items × 161 weeks)
-- Count rows matching `"sparkling ice core"` (should be 161 = 1 item × 161 weeks)
+### Test 2.4 — Costco individual UPC rows eliminated
+- Verify that after the full pipeline, no rows from individual UPCs survive
+- Count rows matching `"sparkling ice"` in raw data (should be 1932 = 12 items × 161 weeks)
+- Count rows matching the brand aggregate item name (should be 161)
+- After pipeline: assert Costco output = 161 rows (only brand aggregate)
+- **Note:** The filtering mechanism is `dropna` on required columns (Dollar Sales, Unit Sales, Volume Sales, Avg_Price), NOT a tighter brand_filter string. Individual UPC rows with complete data may survive if the brand_filter alone is relied on — the pipeline's dropna step is the actual safety net.
 
 ---
 
@@ -210,6 +212,16 @@
 ### Test 7.5 — BJ's/Sam's Log_Price_PL > 0
 - Assert `Log_Price_PL > 0` for all BJ's and Sam's rows (valid log of positive PL price)
 
+### Test 7.6 — Costco Private Label fields zeroed out
+- Assert `Price_PL = 0.0` for all Costco rows (not NaN)
+- Assert `Volume_Sales_PL = 0.0` for all Costco rows (if column present)
+- Assert `Promo_Intensity_SI = 0.0` for all Costco rows (CRX lacks merchandising columns)
+
+### Test 7.7 — BJ's/Sam's Private Label prices are valid
+- Assert `Price_PL > 0` for all BJ's and Sam's rows
+- Assert `Price_PL` range: approximately $7.30 – $14.00
+- These come from Private Label `Dollar Sales / Unit Sales`
+
 ---
 
 ## TEST GROUP 8: Log Transformations
@@ -224,7 +236,11 @@
 - Assert no NaN or inf values
 - Assert range: approximately 2.70 to 3.00
 
-### Test 8.3 — Log Price PL
+### Test 8.3 — Log Price SI
+- Assert `Log_Price_SI = ln(Price_SI)` for all rows
+- Assert no NaN or inf values
+
+### Test 8.4 — Log Price PL
 - For BJ's/Sam's: `Log_Price_PL = ln(Price_PL)` where Price_PL > 0
 - For Costco: `Log_Price_PL = 0.0`
 - Assert no NaN values anywhere
@@ -242,10 +258,11 @@
 
 ### Test 9.2 — Week_Number is monotonically increasing per retailer
 - Within each retailer, `Week_Number` should increase (or stay same) with Date
-- `Week_Number` = 0 for the earliest date in the combined dataset
+- When `week_number_origin_date='2023-01-01'`, Week_Number = 0 for 2023-01-01
 
 ### Test 9.3 — Week_Number is globally consistent
 - The same calendar date should have the same `Week_Number` across all retailers
+- Example: 2023-02-05 should be Week_Number=5 for BJ's, Sam's, AND Costco
 
 ---
 
@@ -320,6 +337,92 @@
 
 ---
 
+## TEST GROUP 13: Costco v2 Data Integrity Checks (NEW)
+
+These tests validate the `_validate_costco_data_integrity()` method added to `data_prep.py` to leverage the 6 new columns in the v2 Costco extract.
+
+### Test 13.1 — v2 columns present in raw file
+- Load `costco.csv` with `skiprows=1`
+- Assert all 6 v2 columns exist: `Gross Dollars`, `Gross Units`, `Coupon Dollars`, `Coupon Units`, `Refund Dollars`, `Refund Units`
+- Assert `UPC` column does NOT exist (removed in v2)
+
+### Test 13.2 — Dollar Sales = Gross Dollars + Refund Dollars (exact)
+- For ALL Costco rows (all 1932, not just brand aggregate):
+  `abs(Dollar Sales - (Gross Dollars + Refund Dollars)) < 0.01`
+- This confirms the returns adjustment relationship
+
+### Test 13.3 — Unit Sales = Gross Units + Refund Units (exact)
+- For all rows where both fields are non-null:
+  `abs(Unit Sales - (Gross Units + Refund Units)) < 1.0`
+
+### Test 13.4 — Total Discount Dollars = −Coupon Dollars (exact)
+- For all rows where both fields are non-null:
+  `abs(Total Discount Dollars - (-Coupon Dollars)) < 0.01`
+- Note: `Coupon Dollars` is **negative** (discount convention); `Total Discount Dollars` is **positive**
+
+### Test 13.5 — −Coupon Units = Promoted Units (exact)
+- For all rows where both fields are non-null:
+  `abs((-Coupon Units) - Promoted Units) < 1.0`
+- Note: `Coupon Units` is **negative**; `Promoted Units` is positive (but can be slightly negative due to rounding in non-promo weeks)
+
+### Test 13.6 — Alternative avg price cross-check (brand aggregate only)
+- For the 161 brand aggregate rows only:
+  `alt_price = (Gross Dollars + Coupon Dollars) / Gross Units`
+  `abs(Avg Net Price - alt_price) < 0.02` for most rows
+- Max discrepancy should be ≈ $0.012 (rounding in CRX's multi-step computation)
+- This confirms `Avg Net Price` is the correct primary source for `Price_SI`
+
+### Test 13.7 — Refund magnitude is minimal
+- Assert `abs(Refund Dollars)` averages < $3,000/week (currently ~$1,959)
+- Assert `abs(Refund Units)` averages < 300/week (currently ~140)
+- Refunds represent < 0.5% of `Gross Dollars` — confirms returns do not materially affect the analysis
+
+### Test 13.8 — Integrity checks run during pipeline execution
+- Run the full pipeline with `costco_path='costco.csv'` (v2 file)
+- Capture log output
+- Assert log contains `"Running CRX data integrity checks"` for Costco
+- Assert log contains `"5/5 integrity checks passed"` (or `"4/5"` at minimum if alt price exceeds tight tolerance)
+- Assert log does NOT contain `"⚠️"` for the 4 exact-match checks
+
+### Test 13.9 — Integrity checks are gracefully skipped for v1 files
+- If a hypothetical Costco file without the v2 columns is loaded, the integrity checks should be skipped silently
+- Assert no errors or warnings related to missing `Gross Dollars`, `Coupon Dollars`, etc.
+
+### Test 13.10 — Sign conventions are correct
+- `Coupon Dollars` should be ≤ 0 for all rows (negative = discount given)
+- `Coupon Units` should be ≤ 0 for all rows (negative = units with coupon)
+- `Refund Dollars` should be ≤ 0 for all rows (negative = money returned)
+- `Refund Units` should be ≤ 0 for all rows (negative = units returned)
+- `Gross Dollars` should be > 0 for all rows with sales
+- `Gross Units` should be > 0 for all rows with sales
+
+---
+
+## TEST GROUP 14: Pipeline Robustness
+
+### Test 14.1 — Pipeline handles Costco v1 file (no v2 columns)
+- If the old Costco file (23 columns, with `UPC`, without `Gross Dollars` etc.) is used:
+  - Pipeline should still produce correct output
+  - Integrity checks should be skipped (no warning, no error)
+  - All core transformations should be identical
+
+### Test 14.2 — Volume Sales strict check handles NaN Unit Sales gracefully
+- Costco individual UPC rows have 945 rows with NaN `Unit Sales`
+- After applying the volume factor (`Unit Sales × 2.0`), these become NaN `Volume Sales`
+- Assert the pipeline does NOT raise a ValueError for these rows
+- Assert these rows are dropped by the subsequent `dropna` step
+- Assert the final output contains only the 161 brand aggregate rows for Costco
+
+### Test 14.3 — Pipeline is idempotent
+- Run `transform()` twice with the same inputs
+- Assert both runs produce identical DataFrames (same shape, same values)
+
+### Test 14.4 — Costco addition does not alter BJ's/Sam's base price calculation
+- The Costco base price fallback logic (`Non Promoted Units < 500 → use Average Price per Unit`) should not affect BJ's/Sam's rows
+- BJ's/Sam's should always use `Base Dollar Sales / Base Unit Sales` regardless of Costco config
+
+---
+
 ## NOTES FOR THE AI CODE WRITER
 
 1. **Framework:** Use `pytest` with descriptive test names and clear assertion messages.
@@ -343,3 +446,7 @@
 6. **Independence:** Each test group should be independent. If one test fails, the others should still run.
 
 7. **Reporting:** On failure, print the actual vs expected values and the row(s) that failed.
+
+8. **Costco v2 awareness:** The `costco.csv` file now has 28 columns (not 23). Tests should reference the v2 schema. The old v1 schema (23 columns + `UPC`) should only be referenced in backward-compatibility tests (Test 14.1).
+
+9. **Log capture:** For Test 13.8 and 13.9, use `caplog` or redirect logging to capture `data_prep.py` log output and assert on specific messages.

@@ -219,7 +219,7 @@ The `help_documents/` folder contains the primary narrative guides for this work
 You’ll see the term “contract” used in two ways:
 
 - **Runtime contract (used by code)**: `data.retailer_data_contracts` in a YAML config (e.g., `config_template.yaml`) which is loaded into `PrepConfig.retailer_data_contracts` and used by `data_prep.py` to handle schema differences (notably Costco CRX vs Circana).
-- **Spec docs (docs only)**: the Markdown files under `contract/` (e.g., `contract/Costco_Data_Integration_Contract.md`). These are human-readable specs and rationale; the code does **not** parse them.
+- **Spec docs (docs only)**: the Markdown files under `contracts/` (e.g., `contracts/Costco_Data_Integration_Contract.md`). These are human-readable specs and rationale; the code does **not** parse them.
 
 ### Notebook walkthrough (recommended for first run)
 
@@ -402,7 +402,7 @@ price_elasticity_bayesian/
 ├── bayesian_models.py
 ├── visualizations.py
 ├── run_analysis.py
-├── contract/
+├── contracts/
 │   └── PROJECT_CONTRACT.md
 ├── notebooks/
 │   └── 01_data_transformation_exploration.ipynb

@@ -66,21 +66,34 @@ The existing Bayesian Price Elasticity Analysis System (v2.0) runs on Circana re
 | 22 | `Avg Net Price` | Dollar Sales (−) Promotion Dollars (−) Total Discount Dollars, divided by Unit Sales | **Yes** — maps to Avg Price Paid |
 | 23 | `OOS %` | Out-of-stock percentage between OOS and In-Stock locations | No (potential future enhancement) |
 
-### 2.3 Columns in Data Dictionary but MISSING from CSV
+### 2.3 Columns Previously Missing from CSV — Now Available (v2 Extract)
 
-The Costco CRX Measure Guide defines the following measures that are **not present in the current data extract**. If provided in a future extract, they would strengthen the analysis:
+The Costco CRX Measure Guide defines the following measures that were **not present in the v1 data extract** but are now **available and verified** in the v2 extract (`costco.csv` updated February 2026). One column (`UPC`) was removed in v2 but was not used in the pipeline.
 
-| Missing Column | Data Dictionary Definition | How It Would Be Used | Priority |
-|---|---|---|---|
-| `Gross Dollars` | All Dollar Sales including Discounts and Returns | Would provide true gross revenue before any adjustments; enables direct `Avg_Price_SI = (Gross Dollars − Coupon Dollars) / Gross Units` | 🟡 Medium — currently handled via `Avg Net Price` |
-| `Gross Units` | All Unit Sales including Discounts and Returns | Would provide true gross units before returns; needed alongside `Gross Dollars` for alternative avg price calculation | 🟡 Medium — currently handled via `Unit Sales` (which is net of returns) |
-| `Coupon Dollars` | Total Dollars for Coupons Redeemed | Would enable direct coupon-adjusted price calculation and validate `Total Discount Dollars` | 🟡 Medium — `Total Discount Dollars` serves a similar role |
-| `Coupon Units` | Total Units sold with a coupon | Would confirm exact promo penetration rates per week; useful for promo intensity analysis | 🟢 Low — `Promoted Units` serves a similar role |
-| `Refunded Dollars` | Dollar amount refunded | Would clarify the returns adjustment embedded in `Dollar Sales` and `Non Promoted Dollars` | 🟢 Low — returns appear minimal in current data |
-| `Refunded Units` | Number of Units returned | Would clarify the returns adjustment embedded in `Unit Sales` and `Non Promoted Units` | 🟢 Low — returns appear minimal in current data |
+| Column | Data Dictionary Definition | Status | Verified Relationship | Sign Convention |
+|---|---|---|---|---|
+| `Gross Dollars` | All Dollar Sales including Discounts and Returns | ✅ **Available** | `Dollar Sales = Gross Dollars + Refund Dollars` (exact) | Positive |
+| `Gross Units` | All Unit Sales including Discounts and Returns | ✅ **Available** | `Unit Sales = Gross Units + Refund Units` (exact) | Positive |
+| `Coupon Dollars` | Total Dollars for Coupons Redeemed | ✅ **Available** | `Total Discount Dollars = −Coupon Dollars` (exact) | **Negative** (discounts) |
+| `Coupon Units` | Total Units sold with a coupon | ✅ **Available** | `−Coupon Units = Promoted Units` (exact) | **Negative** |
+| `Refund Dollars` | Dollar amount refunded | ✅ **Available** | Avg ~$1,959/week (~0.15% of sales); confirms returns are minimal | Negative |
+| `Refund Units` | Number of Units returned | ✅ **Available** | Avg ~140 units/week; confirms returns are minimal | Negative |
+| `UPC` | Manufacturer's UPC code | ❌ **Removed in v2** | Was NaN for brand aggregate row; not used in pipeline | N/A |
 
-**Note:** The current CSV provides sufficient data for the elasticity model. These missing columns would primarily add **validation redundancy** and enable an **alternative average price calculation path**. They are not blockers for the Costco integration.
+**How these columns are used:**
 
+These columns serve as **data integrity guardrails** in the transformation pipeline. On every load, the code validates:
+1. `Dollar Sales = Gross Dollars + Refund Dollars` — confirms returns adjustment
+2. `Unit Sales = Gross Units + Refund Units` — confirms returns adjustment
+3. `Total Discount Dollars = −Coupon Dollars` — confirms discount decomposition
+4. `−Coupon Units = Promoted Units` — confirms promo unit attribution
+5. `(Gross Dollars + Coupon Dollars) / Gross Units ≈ Avg Net Price` — alternative avg price cross-check (small rounding discrepancy of ~$0.01 is expected and documented)
+
+If any check fails in a future data refresh, the pipeline logs a warning but does not halt — the core transformation logic does not depend on these columns.
+
+**Alternative average price path:** With `Gross Dollars` and `Coupon Dollars` now available, the calculation `(Gross Dollars + Coupon Dollars) / Gross Units` provides an independent cross-check of `Avg Net Price`. The max discrepancy is $0.012, confirming that `Avg Net Price` remains the correct primary source.
+
+**Note on existing columns:** All 22 shared columns between v1 and v2 are byte-for-byte identical. The 5 columns used in the core pipeline (`Item`, `Time`, `Unit Sales`, `Non Promoted Dollars/Units`, `Avg Net Price`) are unchanged. Swapping v1 for v2 produces the same `enhanced_data.csv` output.
 ---
 
 ## 3. Product Filtering: Brand-Level Aggregate
@@ -513,9 +526,10 @@ Adding Costco as a third retailer strengthens the hierarchical model by providin
 | 1.0 | February 5, 2026 | Initial contract — complete mapping from Costco CRX to model-ready format |
 | 1.1 | February 5, 2026 | **Base Price updated**: changed from `Average Price per Unit` to `Non Promoted Dollars / Non Promoted Units` (with fallback) based on alignment with Circana's modeled base sales concept. Added Circana Base Dollar/Unit Sales definitions. Added data validation and fallback strategy. |
 | 1.2 | February 5, 2026 | **Data dictionary integration**: Added Section 2.3 (columns defined in CRX Measure Guide but missing from CSV). Enriched Section 2.2 with official data dictionary definitions for all 23 columns. Added data dictionary confirmations to Section 4.4. Added alternative `Avg_Price_SI` calculation path via `Gross Dollars`/`Coupon Dollars` if those columns become available. Added alert note to Table 4.1. |
+| 1.3 | February 6, 2026 | **v2 extract integration**: All 6 previously missing columns (`Gross Dollars`, `Gross Units`, `Coupon Dollars`, `Coupon Units`, `Refund Dollars`, `Refund Units`) now available in `costco.csv`. `UPC` column removed (unused). Updated Section 2.3 with verified relationships and sign conventions. Added `_validate_costco_data_integrity()` method to `data_prep.py` — 5 automated integrity checks run on every load. All existing columns unchanged between v1 and v2. |
 
 ---
 
-**Status:** 🟡 DRAFT — Base Price mapping agreed (v1.1). Continuing alignment on remaining fields.
+**Status:** 🟢 ACTIVE — v1.3. All field mappings agreed. v2 extract integrated with automated integrity checks.
 
 **Next Step:** Once this mapping is agreed upon, modify `data_prep.py` to add a Costco transformation path and run the 3-retailer hierarchical model.

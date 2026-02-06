@@ -35,7 +35,7 @@ Given weekly **Circana** CSV exports for one or more retailers (e.g., BJ’s, Sa
 **Docs**
 
 - `README.md`: quickstart + examples
-- `contract/PROJECT_CONTRACT.md`: detailed blueprint/spec, deliverables, validation plan
+- `contracts/PROJECT_CONTRACT.md`: detailed blueprint/spec, deliverables, validation plan
 - `help_documents/architecture.md` (this file): “how everything connects”
 - `help_documents/`: narrative guides and operational runbooks
   - `how_to_run.md`: step-by-step commands to set up venv, upload data, run the pipeline, and validate outputs
@@ -219,7 +219,7 @@ In this repo, the word “contract” is used in two different ways:
 
 - **Runtime contract (used by code)**: a Python dict stored on `PrepConfig.retailer_data_contracts` (typically loaded from YAML via `run_analysis.py --config ...`).  
   `data_prep.py` calls `_get_contract(retailer)` and uses the returned dict to decide how to read and interpret each retailer’s CSV.
-- **Spec contract (docs only)**: Markdown files under `contract/` (e.g., `contract/Costco_Data_Integration_Contract.md`).  
+- **Spec contract (docs only)**: Markdown files under `contracts/` (e.g., `contracts/Costco_Data_Integration_Contract.md`).  
   These are human-readable mapping specs and rationale. The code does **not** parse these files.
 
 This distinction matters because Costco’s schema differences are handled by the **runtime** YAML contracts, not the Markdown spec.
@@ -259,7 +259,7 @@ flowchart TD
   GetContract --> ParseDate["_parse_date_for_retailer(date_prefix or date_regex)"]
   GetContract --> Price["_compute_avg_price_for_retailer / _compute_base_price_for_retailer"]
   VolumeFactor["volume_sales_factor_by_retailer"] --> Volume["Volume Sales: fill missing as Unit Sales × factor"]
-  SpecDoc["contract/*.md (spec only)"] -. not read by code .-> PrepConfig
+  SpecDoc["contracts/*.md (spec only)"] -. not read by code .-> PrepConfig
 ```
 
 Where to find operational steps (commands, venv, uploading CSVs, validating outputs):

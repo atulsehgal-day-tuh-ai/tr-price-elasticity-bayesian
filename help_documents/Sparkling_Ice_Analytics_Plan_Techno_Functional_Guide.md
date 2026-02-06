@@ -140,7 +140,7 @@ Important: the pipeline supports **heterogeneous retailer sources** via a YAML-d
 Clarifying note on “contracts”:
 
 - **Runtime contract (used by code)**: `data.retailer_data_contracts` (YAML) → `PrepConfig.retailer_data_contracts` (Python). `data_prep.py` reads this mapping to apply per-retailer parsing rules (skiprows, date format, price formulas, etc.).
-- **Spec contract (docs only)**: the Markdown mapping spec `contract/Costco_Data_Integration_Contract.md` explains the Costco CRX → model-ready mapping rationale. The pipeline does **not** parse the `contract/` Markdown files.
+- **Spec contract (docs only)**: the Markdown mapping spec `contracts/Costco_Data_Integration_Contract.md` explains the Costco CRX → model-ready mapping rationale. The pipeline does **not** parse the `contracts/` Markdown files.
 
 ### 5.1 Raw columns actually used (minimum set)
 
