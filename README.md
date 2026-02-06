@@ -200,6 +200,12 @@ python run_analysis.py --config my_config.yaml
 
 See **`help_documents/architecture.md`** for a detailed architecture diagram, module responsibilities, call graphs, and the end-to-end data/model/report flow.
 
+### How to run (step-by-step runbook)
+
+For the most “copy/paste” operational guide (venv setup, data upload, running the pipeline, and validation), see:
+
+- **`help_documents/how_to_run.md`**
+
 ### Business / stakeholder guides (recommended for non-technical audiences)
 
 The `help_documents/` folder contains the primary narrative guides for this work:
@@ -207,6 +213,13 @@ The `help_documents/` folder contains the primary narrative guides for this work
 - **`help_documents/Sparkling_Ice_Analytics_Plan_Business_Guide.md`**: The business-friendly end-to-end story (Bayesian vs classical, MCMC, why compute matters, dual elasticities, seasonality/holidays, hierarchical pooling, and which questions we answer).
 - **`help_documents/Sparkling_Ice_Analytics_Plan_Techno_Functional_Guide.md`**: A combined business + technical guide (model/data contracts, raw columns used, engineered features, conceptual equations, implementation pointers).
 - **`help_documents/Azure_VM_Cursor_MCMC_Setup_Guide.md`**: How to run the project on a VM via Cursor/SSH (kept separate from the modeling narrative).
+
+#### Note on “contracts” (runtime vs docs)
+
+You’ll see the term “contract” used in two ways:
+
+- **Runtime contract (used by code)**: `data.retailer_data_contracts` in a YAML config (e.g., `config_template.yaml`) which is loaded into `PrepConfig.retailer_data_contracts` and used by `data_prep.py` to handle schema differences (notably Costco CRX vs Circana).
+- **Spec docs (docs only)**: the Markdown files under `contract/` (e.g., `contract/Costco_Data_Integration_Contract.md`). These are human-readable specs and rationale; the code does **not** parse them.
 
 ### Notebook walkthrough (recommended for first run)
 

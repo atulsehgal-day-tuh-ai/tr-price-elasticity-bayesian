@@ -1,7 +1,7 @@
 # Costco Data Integration Contract
 ## Mapping Costco CRX Data to the Bayesian Price Elasticity Pipeline
 
-**Prepared for:** Atul Sehgal — Director of Data Science, Swire Coca-Cola  
+**Prepared for:** Atul Sehgal  
 **Date:** February 5, 2026  
 **Version:** 1.2  
 **Purpose:** Document every data transformation decision required to integrate Costco into the existing BJ's/Sam's Bayesian price elasticity system, so that a single hierarchical model can be run across all three retailers.

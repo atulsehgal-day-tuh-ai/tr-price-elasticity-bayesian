@@ -329,6 +329,52 @@ ls -lh ./data
 
 ---
 
+## 5.4 Data transformation validation (recommended before model fitting)
+
+Before you trust any elasticity results, you should build confidence that the **data transformation** is correct. The fastest way is to use the exploration notebook:
+
+- `notebooks/01_data_transformation_exploration.ipynb`
+
+Why this notebook is valuable:
+
+- It runs `ElasticityDataPrep.transform(...)` and shows intermediate sanity checks
+- It produces a saved, auditable artifact: `results/prepared_data_from_notebook.csv`
+- It makes it easy to spot schema/parsing issues (especially for Costco CRX)
+
+### How to use it (high level)
+
+1. Activate your venv
+2. Start Jupyter
+3. Open `notebooks/01_data_transformation_exploration.ipynb`
+4. Run cells top-to-bottom
+
+### What to verify in the notebook (the “confidence checklist”)
+
+- **Retailers present**: you should see BJ’s + Sam’s; and Costco if `data/costco.csv` exists
+- **Date range** matches your source files
+- **No obviously broken values**:
+  - prices are positive and within a plausible range
+  - volume sales are positive
+  - log columns do not contain `inf`/`-inf`
+- **Promo depth** looks right:
+  - `Promo_Depth_SI` is near 0 most weeks and negative on discounted weeks (e.g., −0.10 ≈ 10% off)
+- **Availability masks** look right:
+  - Costco should typically have `has_competitor = 0` (no private label rows)
+- **Export exists**: `results/prepared_data_from_notebook.csv` is written and looks sane
+
+### Other ways to gain confidence in transformation (in addition to the notebook)
+
+Beyond eyeballing plots, the most reliable methods are:
+
+- **Audit artifact**: treat `prepared_data.csv` / `prepared_data_from_notebook.csv` as the “source of truth” and inspect counts, ranges, and missingness by retailer.
+- **Schema checks**: assert required columns exist and no `inf`/`-inf` appears in log columns.
+- **Retailer-by-retailer summaries**: min/max dates, row counts, price ranges, promo depth distributions, and mask flags (`has_promo` / `has_competitor`) per retailer.
+- **Spot-check a few weeks** against raw source rows (especially Costco avg/base price math).
+
+If the notebook fails or looks suspicious, fix data transformation first (contracts, factors, file paths) before fitting models.
+
+---
+
 ## 6) First run (recommended): example scripts
 
 Before you do a full pipeline run, run an example. Examples are the fastest way to confirm:
@@ -358,6 +404,11 @@ python examples/example_01_simple.py
 
 - Establishes that your environment can load data, fit a model, and produce outputs.
 
+**Verify (quick):**
+
+- You should see a printed model summary (including R-hat / ESS / divergences).
+- If the script produces an output folder (commonly `output_example_01/`), verify it exists and contains an HTML report.
+
 ### 6.2 Example 02 — hierarchical model (multi-retailer)
 
 ```bash
@@ -372,7 +423,49 @@ python examples/example_02_hierarchical.py
 
 - Confirms the group-level machinery works (and is typically closer to “real use”).
 
-### 6.3 Example 05 — base vs promo elasticity (V2)
+**Verify (quick):**
+
+- The output should list retailers found in the data (e.g., BJ’s, Sam’s Club, and optionally Costco if your script/config includes it).
+- The script should print global + retailer-specific elasticities.
+
+### 6.3 Example 03 — adding custom features (extending the model inputs)
+
+```bash
+python examples/example_03_add_features.py
+```
+
+**What you are running:**
+
+- A guided example that shows feature engineering patterns (interactions, lags, moving averages, custom formulas) and how those new columns flow into modeling.
+
+**Why this was not listed earlier:**
+
+- It’s not needed to prove the system runs end-to-end. It’s for the “next phase” once you trust the baseline transformation + model and want to extend inputs.
+
+**Verify (quick):**
+
+- Look for a created output folder like `output_example_03/`.
+- Confirm the new engineered columns exist in the transformed DataFrame (the script prints/logs them).
+
+### 6.4 Example 04 — Costco (heterogeneous schema + missing-feature handling)
+
+```bash
+python examples/example_04_costco.py
+```
+
+**What you are running:**
+
+- A three-retailer hierarchical run designed to demonstrate handling heterogeneous retailers and missing data using availability flags.\n+
+**Why this was not listed earlier:**
+
+- It is slightly more operationally demanding (requires `data/costco.csv` and, for best results, correct contracts/factors), so it’s best after you’ve validated transformation with the notebook.
+
+**Verify (quick):**
+
+- The script should print a retailer list including `Costco`.
+- It should write an HTML report in `output_example_04/` (typically `costco_missing_promo_report.html`).
+
+### 6.5 Example 05 — base vs promo elasticity (V2)
 
 ```bash
 python examples/example_05_base_vs_promo.py
@@ -387,6 +480,11 @@ python examples/example_05_base_vs_promo.py
 **Purpose:**
 
 - Confirms that base vs promo separation is working and produces the comparison outputs.
+
+**Verify (quick):**
+
+- The results should include both **Base Price Elasticity** and **Promotional Elasticity**.
+- If a report is generated, confirm it includes a “base vs promo” comparison section/plot.
 
 ---
 

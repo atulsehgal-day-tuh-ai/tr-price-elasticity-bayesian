@@ -137,6 +137,11 @@ This section is the “contract” between the raw retailer exports and the mode
 
 Important: the pipeline supports **heterogeneous retailer sources** via a YAML-driven `retailer_data_contracts` block (see `config_template.yaml`). That’s what allows BJ’s/Sam’s (Circana) and Costco (CRX) to land in the same model-ready schema with **no hardcoded retailer logic**.
 
+Clarifying note on “contracts”:
+
+- **Runtime contract (used by code)**: `data.retailer_data_contracts` (YAML) → `PrepConfig.retailer_data_contracts` (Python). `data_prep.py` reads this mapping to apply per-retailer parsing rules (skiprows, date format, price formulas, etc.).
+- **Spec contract (docs only)**: the Markdown mapping spec `contract/Costco_Data_Integration_Contract.md` explains the Costco CRX → model-ready mapping rationale. The pipeline does **not** parse the `contract/` Markdown files.
+
 ### 5.1 Raw columns actually used (minimum set)
 
 From each retailer CSV, the pipeline uses (exact column names can vary by retailer; the contract defines the mapping):

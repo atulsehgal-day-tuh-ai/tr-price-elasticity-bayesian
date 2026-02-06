@@ -38,6 +38,7 @@ Given weekly **Circana** CSV exports for one or more retailers (e.g., BJ’s, Sa
 - `contract/PROJECT_CONTRACT.md`: detailed blueprint/spec, deliverables, validation plan
 - `help_documents/architecture.md` (this file): “how everything connects”
 - `help_documents/`: narrative guides and operational runbooks
+  - `how_to_run.md`: step-by-step commands to set up venv, upload data, run the pipeline, and validate outputs
   - `Sparkling_Ice_Analytics_Plan_Business_Guide.md`: business story and decision framing
   - `Sparkling_Ice_Analytics_Plan_Techno_Functional_Guide.md`: combined business + technical deep dive (data contract, model form, implementation pointers)
   - `Azure_VM_Cursor_MCMC_Setup_Guide.md`: VM setup and running guidance
@@ -211,6 +212,60 @@ The CLI wraps that same flow:
 ### 6.1 Input contracts: per-retailer CSV expectations
 
 The data prep layer supports heterogeneous retailer sources (Circana, Costco CRX, etc.) using a YAML-driven `retailer_data_contracts` block in `config_template.yaml`.
+
+#### 6.1.1 “Contract” in code vs “contract” in docs (important)
+
+In this repo, the word “contract” is used in two different ways:
+
+- **Runtime contract (used by code)**: a Python dict stored on `PrepConfig.retailer_data_contracts` (typically loaded from YAML via `run_analysis.py --config ...`).  
+  `data_prep.py` calls `_get_contract(retailer)` and uses the returned dict to decide how to read and interpret each retailer’s CSV.
+- **Spec contract (docs only)**: Markdown files under `contract/` (e.g., `contract/Costco_Data_Integration_Contract.md`).  
+  These are human-readable mapping specs and rationale. The code does **not** parse these files.
+
+This distinction matters because Costco’s schema differences are handled by the **runtime** YAML contracts, not the Markdown spec.
+
+#### 6.1.2 How the runtime contract drives Costco (and other retailers)
+
+Retailer inclusion rule:
+
+- BJ’s and Sam’s are always loaded (they are required inputs).
+- Costco is loaded **only if** a `costco_path` is provided:
+  - CLI mode: `python run_analysis.py --costco data/costco.csv ...`
+  - Config mode: `data.costco_path: "data/costco.csv"`
+
+When `retailer_data_contracts` is provided, it drives retailer-specific behavior like:
+
+- header handling (`skiprows`)
+- product identifier column name (`Product` vs `Item`) and renaming to `Product`
+- date parsing (`date_prefix` strip vs `date_regex` extraction)
+- average price calculation (formula vs direct column, e.g., Costco `Avg Net Price`)
+- base price calculation (formula + fallback threshold)
+- whether `Volume Sales` exists directly or must be computed
+
+Two other “contract-like” inputs are also critical for heterogeneous retailers:
+
+- **Volume sales strict rule**: the dependent variable is always **Volume Sales**. If a retailer file is missing a `Volume Sales` column (common for Costco), `data_prep.py` computes it as:
+  - `Volume Sales = Unit Sales × volume_sales_factor_by_retailer[Retailer]`
+- **Missing-feature masking**: `PrepConfig.retailers` can specify `has_promo` and `has_competitor`.  
+  `data_prep.py` uses these to zero-out promo or competitor features for retailers that don’t have them, so one model can run across mixed retailers.
+
+#### 6.1.3 Flow: YAML contract → `PrepConfig` → data prep behavior
+
+```mermaid
+flowchart TD
+  YAMLConfig["YAML config: data.retailer_data_contracts"] --> PrepConfig["PrepConfig.retailer_data_contracts"]
+  PrepConfig --> GetContract["_get_contract(retailer)"]
+  GetContract --> Load["_load_single_retailer(skiprows, product_column)"]
+  GetContract --> ParseDate["_parse_date_for_retailer(date_prefix or date_regex)"]
+  GetContract --> Price["_compute_avg_price_for_retailer / _compute_base_price_for_retailer"]
+  VolumeFactor["volume_sales_factor_by_retailer"] --> Volume["Volume Sales: fill missing as Unit Sales × factor"]
+  SpecDoc["contract/*.md (spec only)"] -. not read by code .-> PrepConfig
+```
+
+Where to find operational steps (commands, venv, uploading CSVs, validating outputs):
+
+- `help_documents/how_to_run.md`
+- `help_documents/Azure_VM_Cursor_MCMC_Setup_Guide.md`
 
 If `retailer_data_contracts` is provided, `ElasticityDataPrep` uses it to drive:
 - header handling (`skiprows`)

@@ -1,0 +1,111 @@
+data:
+  bjs_path: "data/bjs.csv"
+  sams_path: "data/sams.csv"
+  costco_path: "data/costco.csv"
+
+  # Keep retailers separate (required for hierarchical modeling)
+  retailer_filter: "All"
+
+  include_seasonality: true
+  include_promotions: true
+  include_time_trend: true
+
+  log_transform_sales: true
+  log_transform_prices: true
+
+  # V2: Dual elasticity (base vs promo)
+  separate_base_promo: true
+
+  # Base price estimation guardrails (used if base sales columns are missing/undefined)
+  base_price_proxy_window: 8
+  base_price_imputed_warn_threshold: 0.30
+
+  # Dependent variable rule: always model Volume Sales.
+  # If a retailer file is missing `Volume Sales`, compute it as Unit Sales × factor.
+  volume_sales_factor_by_retailer:
+    Costco: 2.0
+
+  # Brand filters for exact-match (legacy). Fuzzy matching kicks in if these don't match.
+  brand_filters:
+    - "Total Sparkling Ice Core Brand"
+    - "PRIVATE LABEL-BOTTLED WATER-SELTZER/SPARKLING/MINERAL WATER"
+
+  enable_brand_fuzzy_match: true
+
+  # Retailer-specific feature availability (for model masking via has_promo / has_competitor)
+  retailers:
+    BJs:
+      has_promo: true
+      has_competitor: true
+    Sams:
+      has_promo: true
+      has_competitor: true
+    Costco:
+      has_promo: true
+      has_competitor: false
+
+  # Per-retailer rules for loading, parsing, and transforming raw CSV files.
+  retailer_data_contracts:
+    BJs:
+      skiprows: 2
+      product_column: "Product"
+      brand_filter: "sparkling ice"
+      competitor_filter: "private label"
+      date_column: "Time"
+      date_prefix: "Week Ending "
+      date_format: "%m-%d-%y"
+      price_calc:
+        avg_price: "Dollar Sales / Unit Sales"
+        base_price: "Base Dollar Sales / Base Unit Sales"
+      volume_column: "Volume Sales"
+
+    Sams:
+      skiprows: 2
+      product_column: "Product"
+      brand_filter: "sparkling ice"
+      competitor_filter: "private label"
+      date_column: "Time"
+      date_prefix: "Week Ending "
+      date_format: "%m-%d-%y"
+      price_calc:
+        avg_price: "Dollar Sales / Unit Sales"
+        base_price: "Base Dollar Sales / Base Unit Sales"
+      volume_column: "Volume Sales"
+
+    Costco:
+      skiprows: 1
+      product_column: "Item"
+      brand_filter: "sparkling ice core"
+      competitor_filter: null
+      date_column: "Time"
+      date_regex: "ending (\\d{2}-\\d{2}-\\d{4})"
+      date_format: "%m-%d-%Y"
+      price_calc:
+        avg_price: "Avg Net Price"
+        base_price: "Non Promoted Dollars / Non Promoted Units"
+        base_price_fallback: "Average Price per Unit"
+        base_price_min_units: 500
+      volume_column: null
+
+model:
+  type: "hierarchical"
+  priors: "default"
+  n_samples: 50
+  n_tune: 50
+  n_chains: 2
+  target_accept: 0.95
+  max_rhat: 1.01
+  min_ess: 400
+  random_seed: 42
+
+output:
+  output_dir: "./results_smoke_costco"
+  generate_html: false
+  generate_plots: false
+  save_trace: true
+  save_summary: true
+  credible_interval: 0.95
+
+logging:
+  verbose: true
+

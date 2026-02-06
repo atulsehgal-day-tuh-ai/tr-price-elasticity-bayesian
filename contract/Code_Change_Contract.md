@@ -1,7 +1,7 @@
 # Code Change Contract: Config-Driven Retailer Support
 ## data_prep.py v2.1 + config_template.yaml v2.0
 
-**Prepared for:** Atul Sehgal — Director of Data Science, Swire Coca-Cola  
+**Prepared for:** Atul Sehgal  
 **Date:** February 5, 2026  
 **Purpose:** Document every code change made to `data_prep.py` and `config_template.yaml` to support Costco as a third retailer, with zero hardcoded retailer logic.
 

@@ -253,18 +253,43 @@ class BayesianResults:
     
     def _check_convergence(self):
         """Check MCMC convergence"""
-        
-        # R-hat
+
+        def _stat_max(x) -> float:
+            """
+            ArviZ returns xarray objects (Dataset/DataArray). We need a single scalar.
+            Convert to a single array and take a numeric max.
+            """
+            try:
+                # Dataset -> DataArray via to_array()
+                if hasattr(x, "to_array"):
+                    x = x.to_array()
+                arr = np.asarray(getattr(x, "values", x), dtype=float)
+                return float(np.nanmax(arr))
+            except Exception:
+                # Last resort: try a direct float conversion
+                return float(x)
+
+        def _stat_min(x) -> float:
+            """See `_stat_max`."""
+            try:
+                if hasattr(x, "to_array"):
+                    x = x.to_array()
+                arr = np.asarray(getattr(x, "values", x), dtype=float)
+                return float(np.nanmin(arr))
+            except Exception:
+                return float(x)
+
+        # R-hat (maximum across all parameters)
         rhat = az.rhat(self.trace)
-        self.rhat_max = float(rhat.max())
-        
-        # ESS
+        self.rhat_max = _stat_max(rhat)
+
+        # ESS (minimum across all parameters)
         ess = az.ess(self.trace)
-        self.ess_min = float(ess.min())
-        
+        self.ess_min = _stat_min(ess)
+
         # Divergences
         divergences = self.trace.sample_stats.diverging.sum().values
-        self.n_divergences = int(divergences)
+        self.n_divergences = int(np.asarray(divergences).item() if np.asarray(divergences).shape == () else np.asarray(divergences).sum())
         
         # Overall convergence
         self.converged = (self.rhat_max < 1.01 and self.ess_min > 400 and self.n_divergences == 0)
