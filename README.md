@@ -301,15 +301,15 @@ print(f"Base price elasticity: {results.base_elasticity.mean:.3f}")
 print(f"Promo elasticity: {results.promo_elasticity.mean:.3f}")
 ```
 
-#### Model equation (V2 dual-elasticity; conceptual)
+#### Model equation (V2 dual-elasticity; **implemented**)
 
-The core demand model is fit on weekly data in log space:
+In V2 dual-elasticity mode (default), the model is fit on weekly data in log space:
 
 \[
 Log\_Volume\_Sales\_{SI,t} = \alpha
 + \beta_{base} \cdot Log\_Base\_Price\_{SI,t}
-+ \beta_{promo} \cdot Promo\_Depth\_{SI,t}
-+ \beta_{cross} \cdot Log\_Price\_{PL,t}
++ \beta_{promo} \cdot (Promo\_Depth\_{SI,t} \cdot has\_promo_t)
++ \beta_{cross} \cdot (Log\_Price\_{PL,t} \cdot has\_competitor_t)
 + \beta_{spring} \cdot Spring_t
 + \beta_{summer} \cdot Summer_t
 + \beta_{fall} \cdot Fall_t
@@ -319,19 +319,40 @@ Log\_Volume\_Sales\_{SI,t} = \alpha
 
 with \(\epsilon_t \sim \mathcal{N}(0, \sigma)\).
 
-**Variables (matches the prepared dataset columns):**
-- **Outcome**: `Log_Volume_Sales_SI` (log of Sparkling Ice `Volume_Sales_SI`)
-- **Base price (strategic)**: `Log_Base_Price_SI` (log of `Base_Price_SI`)
-- **Promotion (tactical)**: `Promo_Depth_SI = (Avg_Price_SI / Base_Price_SI) - 1` (negative when discounted)
-- **Cross price (private label)**: `Log_Price_PL`
-- **Seasonality**: `Spring`, `Summer`, `Fall` (winter is the implicit baseline)
-- **Trend**: `Week_Number` (weeks since first observation)
+**Sources / calculations (raw Circana → engineered features):**
+- **`Log_Volume_Sales_SI` (dependent variable)**  
+  - **Source**: Sparkling Ice `Volume Sales` (raw column: `Volume Sales`) after filtering `Product` to Sparkling Ice aggregate and pivoting to `Volume_Sales_SI`
+  - **Fallback (strict)**: if `Volume Sales` is missing for a retailer, compute `Volume Sales = Unit Sales × factor` using `PrepConfig.volume_sales_factor_by_retailer`
+  - **Transform**: `Log_Volume_Sales_SI = ln(Volume_Sales_SI)` (requires `Volume_Sales_SI > 0`)
 
-**Important:** `Unit Sales` is **not** the dependent variable. It is used to compute price denominators:
-- `Avg_Price_SI = Dollar_Sales_SI / Unit_Sales_SI`
-- `Base_Price_SI = Base_Dollar_Sales_SI / Base_Unit_Sales_SI`
+- **`Log_Base_Price_SI` (strategic/base price term)**  
+  - **Source**: raw `Base Dollar Sales`, `Base Unit Sales` (Sparkling Ice) → `Base_Price_SI = Base_Dollar_Sales_SI / Base_Unit_Sales_SI`
+  - **Guardrails**: if base sales columns are missing/undefined for weeks, the pipeline imputes a proxy `Base_Price_SI` from observed average prices (see `PrepConfig.base_price_proxy_window` and `base_price_imputed_warn_threshold`)
+  - **Transform**: `Log_Base_Price_SI = ln(Base_Price_SI)` (requires `Base_Price_SI > 0`)
+
+- **`Promo_Depth_SI` (tactical/promo term)**  
+  - **Source**:
+    - `Avg_Price_SI = Dollar_Sales_SI / Unit_Sales_SI` (raw: `Dollar Sales`, `Unit Sales`)
+    - `Promo_Depth_SI = (Avg_Price_SI / Base_Price_SI) - 1` (negative when discounted)
+  - **Stability**: NaN/inf handled and values are clipped to a reasonable range for robustness
+
+- **`Log_Price_PL` (private label / cross-price control)**  
+  - **Source**: Private Label aggregate → `Price_PL = Dollar_Sales_PL / Unit_Sales_PL` then `Log_Price_PL = ln(Price_PL)`
+  - **Missingness**: if competitor/private label price is not available for a retailer, the model uses `has_competitor_t = 0` so the cross-price term contributes 0
+
+- **`Spring`, `Summer`, `Fall` (seasonality controls)**  
+  - **Source**: derived from `Date` month (winter is the implicit baseline)
+
+- **`Week_Number` (time trend control)**  
+  - **Source**: weeks since first observation: `Week_Number = int((Date - min(Date)).days / 7)`
+
+- **`has_promo`, `has_competitor` (availability masks)**  
+  - **Source**: retailer configuration (`PrepConfig.retailers`) and/or inferred availability
+  - **Purpose**: ensures missing promo/competitor features don’t bias estimation by zeroing out those terms
 
 In hierarchical mode, the intercept and/or elasticities can vary by retailer with partial pooling.
+
+**Notes / fallbacks:** if `Log_Base_Price_SI` / `Promo_Depth_SI` are unavailable (non-V2 mode), the code falls back to a legacy feature set (e.g., `Log_Price_SI` and optional `Promo_Intensity_SI`).
 
 ### Probability Statements
 

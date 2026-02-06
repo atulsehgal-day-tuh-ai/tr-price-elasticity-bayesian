@@ -365,8 +365,8 @@ The core model is a log-demand regression with controls:
 \[
 Log\_Volume\_Sales\_{SI,t} = \\alpha
 + \\beta_{base} \\cdot Log\_Base\_Price\_{SI,t}
-+ \\beta_{promo} \\cdot Promo\_Depth\_{SI,t}
-+ \\beta_{cross} \\cdot Log\_Price\_{PL,t}
++ \\beta_{promo} \\cdot (Promo\_Depth\_{SI,t} \\cdot has\\_promo_t)
++ \\beta_{cross} \\cdot (Log\_Price\_{PL,t} \\cdot has\\_competitor_t)
 + \\beta_{spring} \\cdot Spring_t
 + \\beta_{summer} \\cdot Summer_t
 + \\beta_{fall} \\cdot Fall_t
@@ -376,15 +376,41 @@ Log\_Volume\_Sales\_{SI,t} = \\alpha
 
 with \(\epsilon_t \sim \mathcal{N}(0, \sigma)\).
 
-**Variables (as used/produced by the pipeline):**
-- **Outcome**: `Log_Volume_Sales_SI` (log of Sparkling Ice `Volume_Sales_SI`; `Volume Sales` in the raw extract, with strict Unit×factor fallback if missing)
-- **Base price (strategic)**: `Log_Base_Price_SI` (log of `Base_Price_SI`)
-- **Promotion (tactical)**: `Promo_Depth_SI = (Avg_Price_SI / Base_Price_SI) - 1` (negative when discounted)
-- **Cross price (private label)**: `Log_Price_PL`
-- **Seasonality**: `Spring`, `Summer`, `Fall` (winter is the implicit baseline)
-- **Trend**: `Week_Number` (weeks since first observation)
+### Variable definitions (with source / calculation)
 
-**Important:** `Unit Sales` is **not** the dependent variable. It is used for unit-consistent price calculations:
+**`Log_Volume_Sales_SI` (dependent variable)**  
+- **Raw source**: Circana `Volume Sales` for Sparkling Ice (after filtering `Product` to the Sparkling Ice aggregate)
+- **Fallback (strict rule)**: if `Volume Sales` is missing for a retailer, compute `Volume Sales = Unit Sales × factor` using `PrepConfig.volume_sales_factor_by_retailer`
+- **Pivoted column**: `Volume_Sales_SI`
+- **Transform**: `Log_Volume_Sales_SI = ln(Volume_Sales_SI)` (requires `Volume_Sales_SI > 0`)
+
+**`Log_Base_Price_SI` (strategic/base price)**  
+- **Raw source**: `Base Dollar Sales`, `Base Unit Sales` (Sparkling Ice)
+- **Derived**: `Base_Price_SI = Base_Dollar_Sales_SI / Base_Unit_Sales_SI` (guard divide-by-zero)
+- **Imputation**: if base sales are missing/undefined for some weeks, the pipeline imputes a proxy base price from observed average prices (rolling-window proxy + forward/back-fill; warns if heavy imputation is required)
+- **Transform**: `Log_Base_Price_SI = ln(Base_Price_SI)` (requires `Base_Price_SI > 0`)
+
+**`Promo_Depth_SI` (tactical discount depth; semi-elasticity)**  
+- **Raw source**: `Dollar Sales`, `Unit Sales` (Sparkling Ice) + base sales columns above
+- **Avg price**: `Avg_Price_SI = Dollar_Sales_SI / Unit_Sales_SI`
+- **Promo depth**: `Promo_Depth_SI = (Avg_Price_SI / Base_Price_SI) - 1` (negative when discounted)
+- **Stability**: NaN/inf handled; values clipped to a conservative range for robustness
+
+**`Log_Price_PL` (private label price / cross-price control)**  
+- **Raw source**: `Dollar Sales`, `Unit Sales` for Private Label aggregate (`Product` filter to PL)
+- **Derived**: `Price_PL = Dollar_Sales_PL / Unit_Sales_PL`, then `Log_Price_PL = ln(Price_PL)`
+
+**`Spring`, `Summer`, `Fall` (seasonality dummies)**  
+- **Derived**: from `Date` month buckets (winter is implicit baseline)
+
+**`Week_Number` (time trend)**  
+- **Derived**: `Week_Number = int((Date - min(Date)).days / 7)`
+
+**`has_promo`, `has_competitor` (availability masks)**  
+- **Source**: retailer availability config (`PrepConfig.retailers`) and/or inferred availability
+- **Usage in equation**: promo and cross-price terms are multiplied by these masks so that missing features contribute 0, preventing bias
+
+**Important:** `Unit Sales` is **not** the dependent variable. It is used for unit-consistent price denominators:
 - `Avg_Price_SI = Dollar_Sales_SI / Unit_Sales_SI`
 - `Base_Price_SI = Base_Dollar_Sales_SI / Base_Unit_Sales_SI`
 

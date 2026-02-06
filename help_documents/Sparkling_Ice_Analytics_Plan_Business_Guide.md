@@ -104,12 +104,9 @@ For a pricing decision worth millions of dollars, the Bayesian approach gives yo
 
 Before we explain *how* the Bayesian engine works, it's worth understanding *what* it's computing — and why the demand equation takes the form it does. This isn't an arbitrary formula. It's the product of over 130 years of economic thought, refined by decades of retail analytics practice.
 
-Our model estimates the following relationship (using the actual variables we fit in the pipeline):
+Our model estimates the following relationship:
 
-> **Log(Volume_Sales_SI) = β₀ + β₁·Log(Base_Price_SI) + β₂·Promo_Depth_SI + β₃·Log(Price_PL) + β₄·Spring + β₅·Summer + β₆·Fall + β₇·Week_Number + ε**
-
-Here, **Sales means Sparkling Ice Volume Sales** (Circana `Volume Sales`, normalized across pack sizes). We model it in log space as `Log_Volume_Sales_SI`.
-`Unit Sales` is still used — but only for unit-consistent **price denominators** (e.g., Avg Price = Dollar Sales ÷ Unit Sales; Base Price = Base Dollar Sales ÷ Base Unit Sales).
+> **Log(Sales) = β₀ + β₁·Log(Base_Price_SI) + β₂·Promo_Depth_SI + β₃·Log(Price_PL) + β₄·Spring + β₅·Summer + β₆·Fall + β₇·Time + ε**
 
 The defining feature is the **log-log structure**: both Sales and Base Price are expressed as logarithms. This single design choice carries enormous analytical power — and it didn't happen by accident.
 
@@ -145,7 +142,7 @@ The seasonal dummies (β₄–β₆), cross-price effect (β₃), and time trend
 
 ### The Bottom Line
 
-When we write Log(Volume Sales) = β₀ + β₁·Log(Price) + ..., we're not inventing a formula. We're applying the most battle-tested specification in pricing analytics — one that connects Alfred Marshall's 1890 insight to Henry Schultz's 1938 empirical methods to today's Circana scanner data — and extending it with modern controls for promotions, seasonality, and competition. The model's pedigree is its credibility.
+When we write Log(Sales) = β₀ + β₁·Log(Price) + ..., we're not inventing a formula. We're applying the most battle-tested specification in pricing analytics — one that connects Alfred Marshall's 1890 insight to Henry Schultz's 1938 empirical methods to today's Circana scanner data — and extending it with modern controls for promotions, seasonality, and competition. The model's pedigree is its credibility.
 
 ---
 
@@ -162,7 +159,7 @@ So we use a technique called **Markov Chain Monte Carlo (MCMC)** — a clever wa
 
 Before the scouts can explore, there has to be a landscape. That landscape is created by the **demand equation** — the mathematical claim our model makes about how the world works:
 
-> **Log(Volume_Sales_SI) = β₀ + β₁·Log(Base_Price_SI) + β₂·Promo_Depth_SI + β₃·Log(Price_PL) + β₄·Spring + β₅·Summer + β₆·Fall + β₇·Week_Number + ε**
+> **Log(Sales) = β₀ + β₁·Log(Base_Price_SI) + β₂·Promo_Depth_SI + β₃·Log(Price_PL) + β₄·Spring + β₅·Summer + β₆·Fall + β₇·Time + ε**
 
 Think of this equation as the **blueprint for the terrain itself**. Each β (beta) coefficient is one dimension of the landscape. Our model has 8 betas plus a noise term (ε), so the scouts are navigating a 9-dimensional mountain range — impossible to visualize, but mathematically well-defined.
 
@@ -174,10 +171,10 @@ Imagine each beta as a compass axis the scout must navigate simultaneously:
 |---|---|---|
 | **β₀** (Intercept) | The baseline altitude — how high the ground is before any pricing or seasonal factors kick in | "How much do we sell if everything is at its reference level?" |
 | **β₁** · Log(Base_Price_SI) | How steeply the terrain drops when Sparkling Ice's own price rises | "Our own price elasticity — how much volume do we lose per 1% price increase?" |
-| **β₂** · Promo_Depth_SI | How much the terrain rises when we run a deeper promotion | "The promo lift — how much extra volume does each point of discount depth drive?" |
+| **β₂** · Promo_Depth_SI | How much the terrain rises when we run a deeper promotion | "The promo lift — how much extra sales does each point of discount depth drive?" |
 | **β₃** · Log(Price_PL) | How the terrain shifts when Private Label competitors change their price | "Cross-price elasticity — do we gain volume when the store brand gets more expensive?" |
 | **β₄, β₅, β₆** (Seasonal) | Ridges and valleys that repeat across the calendar | "Do we sell more in Summer? Less in Fall? How big are the seasonal swings?" |
-| **β₇** · Week_Number | A gentle slope that tilts the entire landscape over the data window | "Is the brand growing or declining over time, independent of price and promos?" |
+| **β₇** · Time | A gentle slope that tilts the entire landscape over the data window | "Is the brand growing or declining over time, independent of price and promos?" |
 | **ε** (Noise) | The fog density — how much random variation blurs the true terrain | "How much unexplained noise is in weekly sales data?" |
 
 **How the Equation Creates the Landscape**
