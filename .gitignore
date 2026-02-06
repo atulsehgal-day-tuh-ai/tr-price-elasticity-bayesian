@@ -30,6 +30,10 @@ outputs/
 results/
 html/
 
+# Example/demo outputs (generated)
+output_example_*/
+results_smoke_*/
+
 # Local data (do not commit raw retailer files)
 data/*
 !data/.gitkeep

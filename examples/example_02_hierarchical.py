@@ -1,5 +1,5 @@
 """
-Example 2: Hierarchical Bayesian Model - Multi-Retailer Analysis
+Example 2: Hierarchical Bayesian Model (Circana / homogeneous schema)
 
 This example demonstrates (V2):
 - Hierarchical modeling with partial pooling
@@ -8,10 +8,14 @@ This example demonstrates (V2):
 - Benefits of borrowing strength across groups
 
 Use this when:
-- Analyzing multiple retailers (BJ's, Sam's, Costco)
+- Analyzing multiple Circana-style retailers with the same schema (e.g., BJ's + Sam's Club)
 - Want more stable group-specific estimates
 - Some groups have limited data
 - Want to quantify between-group variation
+
+Note:
+- This example intentionally loads **only** `data/bjs.csv` and `data/sams.csv`.
+- For a hierarchical run that includes Costco CRX (heterogeneous schema + masking), see `examples/example_04_costco.py`.
 """
 
 import sys

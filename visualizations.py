@@ -536,6 +536,17 @@ def plot_group_comparison(results, output_path: Optional[str] = None, figsize=(1
     if not hasattr(results, 'group_elasticities'):
         print("Not a hierarchical model - skipping group comparison")
         return None
+
+    # V2 traces use `base_elasticity` (and optionally `promo_elasticity`) rather than legacy `elasticity_own`.
+    posterior = results.trace.posterior
+    if 'base_elasticity' in posterior:
+        var_group = 'base_elasticity'
+        var_global = 'mu_global_base' if 'mu_global_base' in posterior else None
+        y_label = 'Base Price Elasticity'
+    else:
+        var_group = 'elasticity_own'
+        var_global = 'mu_global_own' if 'mu_global_own' in posterior else None
+        y_label = 'Own-Price Elasticity'
     
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
     
@@ -559,7 +570,7 @@ def plot_group_comparison(results, output_path: Optional[str] = None, figsize=(1
     
     ax1.set_xticks(x_pos)
     ax1.set_xticklabels(groups)
-    ax1.set_ylabel('Own-Price Elasticity')
+    ax1.set_ylabel(y_label)
     ax1.set_title('Retailer-Specific Elasticities', fontweight='bold')
     ax1.legend()
     ax1.grid(alpha=0.3, axis='y')
@@ -567,14 +578,15 @@ def plot_group_comparison(results, output_path: Optional[str] = None, figsize=(1
     # Plot 2: Posterior distributions overlay
     for group in groups:
         group_idx = list(results.groups).index(group)
-        samples = results.trace.posterior['elasticity_own'].values[:, :, group_idx].flatten()
+        samples = results.trace.posterior[var_group].values[:, :, group_idx].flatten()
         ax2.hist(samples, bins=30, alpha=0.5, label=group, density=True)
     
     # Add global distribution
-    global_samples = results.trace.posterior['mu_global_own'].values.flatten()
-    ax2.hist(global_samples, bins=30, alpha=0.5, label='Global', density=True, color='red')
+    if var_global and var_global in results.trace.posterior:
+        global_samples = results.trace.posterior[var_global].values.flatten()
+        ax2.hist(global_samples, bins=30, alpha=0.5, label='Global', density=True, color='red')
     
-    ax2.set_xlabel('Own-Price Elasticity')
+    ax2.set_xlabel(y_label)
     ax2.set_ylabel('Density')
     ax2.set_title('Posterior Distributions by Retailer', fontweight='bold')
     ax2.legend()

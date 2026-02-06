@@ -1,5 +1,5 @@
 """
-Example 3: Custom Feature Engineering
+Example 3: Custom Feature Engineering (retailer × week shape; optional Costco)
 
 This example demonstrates:
 - Adding interaction terms (price × season)
@@ -13,6 +13,13 @@ Use this when:
 - Want to include momentum/carryover effects
 - Need custom transformations
 - Testing specific hypotheses
+
+Retailer note:
+- This example always requires `data/bjs.csv` and `data/sams.csv`.
+- If `data/costco.csv` exists, the example will automatically include Costco as well.
+- This example keeps retailers separate (`retailer_filter="All"`) so the transformed dataset is
+  one row per (Retailer, Week). This mirrors the hierarchical-path data shape and ensures
+  lagged/moving-average features are computed **within retailer** (no cross-retailer leakage).
 """
 
 import sys
@@ -27,6 +34,7 @@ from data_prep import ElasticityDataPrep, PrepConfig
 from bayesian_models import SimpleBayesianModel
 import pandas as pd
 import numpy as np
+import yaml
 
 def main():
     # ============================================================================
@@ -37,18 +45,11 @@ def main():
     print("EXAMPLE 3: CUSTOM FEATURE ENGINEERING")
     print("=" * 80)
 
-    prep = ElasticityDataPrep(
-        PrepConfig(
-            retailer_filter="Overall",
-            include_seasonality=True,
-            include_promotions=True,
-            verbose=True,
-        )
-    )
-
     DATA_DIR = REPO_ROOT / "data"
     bjs_csv = DATA_DIR / "bjs.csv"
     sams_csv = DATA_DIR / "sams.csv"
+    costco_csv = DATA_DIR / "costco.csv"
+    include_costco = costco_csv.exists()
 
     if not bjs_csv.exists() or not sams_csv.exists():
         raise FileNotFoundError(
@@ -58,9 +59,50 @@ def main():
             "Place your Circana files in the repo's data/ folder (see README.md)."
         )
 
-    df = prep.transform(bjs_path=str(bjs_csv), sams_path=str(sams_csv))
+    # Load runtime retailer contracts from config_template.yaml so heterogeneous sources (Costco CRX)
+    # can be parsed correctly without hardcoding retailer logic in this script.
+    retailer_data_contracts = None
+    try:
+        cfg_path = REPO_ROOT / "config_template.yaml"
+        with open(cfg_path, "r") as f:
+            cfg_yaml = yaml.safe_load(f) or {}
+        retailer_data_contracts = (cfg_yaml.get("data") or {}).get("retailer_data_contracts")
+    except Exception:
+        retailer_data_contracts = None
+
+    # Always keep retailers separate so time-series features (lags/MAs) are computed
+    # within each retailer, and the dataset shape mirrors the hierarchical-path flow.
+    retailer_filter = "All"
+
+    retailers_cfg = {
+        "BJs": {"has_promo": True, "has_competitor": True},
+        "Sams": {"has_promo": True, "has_competitor": True},
+    }
+    if include_costco:
+        retailers_cfg["Costco"] = {"has_promo": True, "has_competitor": False}
+
+    prep = ElasticityDataPrep(
+        PrepConfig(
+            retailer_filter=retailer_filter,
+            include_seasonality=True,
+            include_promotions=True,
+            verbose=True,
+            separate_base_promo=True,
+            volume_sales_factor_by_retailer={"Costco": 2.0},
+            retailers=retailers_cfg,
+            retailer_data_contracts=retailer_data_contracts,
+        )
+    )
+
+    df = prep.transform(
+        bjs_path=str(bjs_csv),
+        sams_path=str(sams_csv),
+        costco_path=str(costco_csv) if include_costco else None,
+    )
 
     print(f"\nBasic data prepared: {len(df)} observations")
+    if "Retailer" in df.columns:
+        print(f"Retailers: {df['Retailer'].unique().tolist()}")
 
     # ============================================================================
     # STEP 2: ADD INTERACTION TERMS
@@ -85,7 +127,9 @@ def main():
     print("ADDING LAGGED FEATURES")
     print("=" * 80)
 
-    df = prep.add_lagged_feature(df, var="Log_Price_SI", lags=[1, 4], group_by=None)
+    # If we have multiple retailers, compute lags within retailer to avoid mixing time series.
+    group_by = ["Retailer"] if "Retailer" in df.columns else None
+    df = prep.add_lagged_feature(df, var="Log_Price_SI", lags=[1, 4], group_by=group_by)
 
     print("\n✓ Added lagged prices:")
     print("  - Log_Price_SI_lag1 (last week's price)")
@@ -99,7 +143,7 @@ def main():
     print("ADDING MOVING AVERAGES")
     print("=" * 80)
 
-    df = prep.add_moving_average(df, var="Price_SI", windows=[4, 8], group_by=None)
+    df = prep.add_moving_average(df, var="Price_SI", windows=[4, 8], group_by=group_by)
 
     print("\n✓ Added moving averages:")
     print("  - Price_SI_ma4 (4-week average price)")
@@ -140,6 +184,7 @@ def main():
 
     feature_cols = [
         "Date",
+        "Retailer",
         "Log_Price_SI",
         "Price_x_Spring",
         "Log_Price_SI_lag1",
@@ -147,6 +192,7 @@ def main():
         "Price_Gap",
         "Price_Index",
     ]
+    feature_cols = [c for c in feature_cols if c in df.columns]
     print("\nSample of enhanced data:")
     print(df[feature_cols].head(10))
 
@@ -167,8 +213,33 @@ NOTE:
 """
     )
 
-    # Drop rows with NaN (from lagging) before fitting
-    df_clean = df.dropna()
+    # ------------------------------------------------------------------------
+    # Cleaning for modeling (avoid dropping heterogeneous retailers)
+    # ------------------------------------------------------------------------
+    # Important: retailers like Costco may legitimately have missing competitor/private-label columns.
+    # A blanket df.dropna() would delete those rows. Instead:
+    #   - Fill competitor columns for has_competitor == 0 retailers
+    #   - Drop NaNs only for columns that become NaN due to lag/MA feature creation
+
+    if "has_competitor" in df.columns:
+        for c in ["Volume_Sales_PL", "Price_PL", "Log_Price_PL"]:
+            if c in df.columns:
+                df.loc[df["has_competitor"] == 0, c] = 0.0
+
+    required_for_modeling = [
+        "Log_Volume_Sales_SI",
+        "Log_Price_SI",
+        "Log_Price_SI_lag1",
+        "Log_Price_SI_lag4",
+        "Price_SI_ma4",
+        "Price_SI_ma8",
+        "Price_Gap",
+        "Price_Index",
+    ]
+    required_for_modeling = [c for c in required_for_modeling if c in df.columns]
+
+    # Drop rows with NaN only where it matters for this example's baseline fit
+    df_clean = df.dropna(subset=required_for_modeling).copy()
     print(f"After dropping NaN from lags: {len(df_clean)} rows")
 
     model = SimpleBayesianModel(priors="default", n_samples=1000, n_chains=2, verbose=True)

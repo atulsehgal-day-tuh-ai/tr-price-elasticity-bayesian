@@ -409,7 +409,7 @@ python examples/example_01_simple.py
 - You should see a printed model summary (including R-hat / ESS / divergences).
 - If the script produces an output folder (commonly `output_example_01/`), verify it exists and contains an HTML report.
 
-### 6.2 Example 02 — hierarchical model (multi-retailer)
+### 6.2 Example 02 — hierarchical (Circana / homogeneous schema: BJ’s + Sam’s)
 
 ```bash
 python examples/example_02_hierarchical.py
@@ -417,16 +417,19 @@ python examples/example_02_hierarchical.py
 
 **What you are running:**
 
-- A hierarchical Bayesian model that can estimate retailer-specific effects with partial pooling.
+- A hierarchical Bayesian model fit across **BJ’s and Sam’s Club** (Circana-style extracts, same “shape” / schema).
+- This is the cleanest way to learn the hierarchical model mechanics without adding heterogeneous schema concerns.
 
 **Purpose:**
 
-- Confirms the group-level machinery works (and is typically closer to “real use”).
+- Confirms the group-level machinery works (partial pooling, group comparisons, group-specific elasticities).
+- Establishes a stable baseline before adding a heterogeneous retailer like Costco.
 
 **Verify (quick):**
 
-- The output should list retailers found in the data (e.g., BJ’s, Sam’s Club, and optionally Costco if your script/config includes it).
+- The output should list retailers found in the data (expected: **BJ’s** and **Sam’s Club**).
 - The script should print global + retailer-specific elasticities.
+- The script should generate an HTML report in `output_example_02/` (default behavior).
 
 ### 6.3 Example 03 — adding custom features (extending the model inputs)
 
@@ -437,6 +440,8 @@ python examples/example_03_add_features.py
 **What you are running:**
 
 - A guided example that shows feature engineering patterns (interactions, lags, moving averages, custom formulas) and how those new columns flow into modeling.
+- It always loads **BJ’s + Sam’s** (and will also include **Costco** automatically if `data/costco.csv` exists).
+- It keeps retailers separate (`retailer_filter="All"`), so the transformed dataset is one row per **(Retailer, Week)**. This mirrors the hierarchical-path data shape and makes it easy to compare transformed rows back to the raw retailer extracts.
 
 **Why this was not listed earlier:**
 
@@ -446,6 +451,18 @@ python examples/example_03_add_features.py
 
 - Look for a created output folder like `output_example_03/`.
 - Confirm the new engineered columns exist in the transformed DataFrame (the script prints/logs them).
+- If `Retailer` is present, sanity-check the shape:
+  - `df['Date'].nunique()` should be roughly the number of weeks
+  - total rows should be roughly `#retailers × #weeks` (minus any drops due to missingness)
+
+**Verify transformation vs raw (spot-check):**
+
+- Pick 3–5 (Retailer, Date) rows from `output_example_03/enhanced_data.csv`.
+- For each retailer, locate the corresponding raw CSV row(s) for that week and confirm:
+  - Avg price logic (Circana: `Dollar Sales / Unit Sales`; Costco: `Avg Net Price`)
+  - Base price logic (Circana base fields; Costco non-promoted fields + fallback)
+  - Volume Sales logic (direct vs `Unit Sales × factor` for Costco)
+  - `Promo_Depth_SI` sign (negative during discounts)
 
 ### 6.4 Example 04 — Costco (heterogeneous schema + missing-feature handling)
 
@@ -455,7 +472,10 @@ python examples/example_04_costco.py
 
 **What you are running:**
 
-- A three-retailer hierarchical run designed to demonstrate handling heterogeneous retailers and missing data using availability flags.\n+
+- A three-retailer hierarchical run designed to demonstrate handling a heterogeneous retailer (Costco CRX) and missing features using:
+  - availability flags (`has_promo`, `has_competitor`)
+  - volume-sales factors (when `Volume Sales` is missing)
+
 **Why this was not listed earlier:**
 
 - It is slightly more operationally demanding (requires `data/costco.csv` and, for best results, correct contracts/factors), so it’s best after you’ve validated transformation with the notebook.

@@ -52,9 +52,9 @@ Given weekly **Circana** CSV exports for one or more retailers (e.g., BJ’s, Sa
 **Examples**
 
 - `examples/example_01_simple.py`: simple/pooled workflow
-- `examples/example_02_hierarchical.py`: hierarchical workflow
+- `examples/example_02_hierarchical.py`: hierarchical workflow (Circana / homogeneous schema: BJ’s + Sam’s)
 - `examples/example_03_add_features.py`: feature engineering patterns + notes on model extension
-- `examples/example_04_costco.py`: retailer with missing features (illustrative missing-promo workflow)
+- `examples/example_04_costco.py`: hierarchical + Costco (heterogeneous schema + missing-feature masking)
 - `examples/example_05_base_vs_promo.py`: base vs promo dual-elasticity showcase
 
 ---

@@ -1,17 +1,17 @@
 """
-Example 4: Adding Costco with Missing Data
+Example 4: Hierarchical + Costco (heterogeneous schema + missing-feature masking)
 
 This example demonstrates (V2):
-- Adding a third retailer (Costco) with incomplete data
-- Configuring retailer-specific features
-- Handling missing promotional data
-- Hierarchical model with 3 retailers
-- Automatic model adjustment
+- Adding a third retailer (Costco CRX) with a **different schema** than Circana
+- Configuring retailer-specific feature availability (masks via `has_promo` / `has_competitor`)
+- Handling missing competitor/private label features safely (masking instead of manual filtering)
+- Handling missing `Volume Sales` via a strict fallback: `Unit Sales × factor` (per retailer)
+- Hierarchical model with 3 retailers (partial pooling)
 
 Use this when:
-- Adding new retailers with different data availability
-- Some retailers lack certain features (promo, competitor, etc.)
-- Want to include all available data without manual filtering
+- Adding new retailers with different schemas and/or data availability
+- Some retailers lack certain features (competitor/private label, promo, etc.)
+- You want one model that can include all retailers without manual, per-retailer branching
 """
 
 import sys
