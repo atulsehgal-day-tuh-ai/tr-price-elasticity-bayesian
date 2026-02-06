@@ -713,6 +713,51 @@ def _create_html_content(results, data, output_dir, group_path, base_vs_promo_pa
     
     # Determine model type
     is_hierarchical = hasattr(results, 'group_elasticities')
+
+    # ------------------------------------------------------------------------
+    # Retailer summary (make retailers visible in HTML text)
+    # ------------------------------------------------------------------------
+    retailer_names = []
+    if isinstance(data, pd.DataFrame) and 'Retailer' in data.columns:
+        retailer_names = sorted([str(x) for x in data['Retailer'].dropna().unique().tolist()])
+
+    retailers_line_html = ""
+    if retailer_names:
+        retailers_line_html = f"<p><strong>Retailers Included:</strong> {', '.join(retailer_names)}</p>"
+
+    availability_table_html = ""
+    if retailer_names and ('has_promo' in data.columns or 'has_competitor' in data.columns):
+        cols = [c for c in ['has_promo', 'has_competitor'] if c in data.columns]
+        # Use max() to interpret availability flags as "present anywhere for this retailer".
+        avail = (
+            data.groupby('Retailer')[cols]
+            .max(numeric_only=True)
+            .reset_index()
+        )
+
+        rows = ""
+        for _, row in avail.iterrows():
+            retailer = str(row['Retailer'])
+            hp = int(row['has_promo']) if 'has_promo' in cols and pd.notna(row.get('has_promo')) else ''
+            hc = int(row['has_competitor']) if 'has_competitor' in cols and pd.notna(row.get('has_competitor')) else ''
+            rows += f"<tr><td>{retailer}</td><td>{hp}</td><td>{hc}</td></tr>\n"
+
+        availability_table_html = f"""
+        <h2>🧾 Retailer Feature Availability</h2>
+        <p>These flags are used for masking so retailers with missing features (e.g., Costco promo/competitor) can still be included safely.</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Retailer</th>
+                    <th>has_promo</th>
+                    <th>has_competitor</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows}
+            </tbody>
+        </table>
+        """
     
     html = f"""
 <!DOCTYPE html>
@@ -827,6 +872,7 @@ def _create_html_content(results, data, output_dir, group_path, base_vs_promo_pa
         <p><strong>Generated:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
         <p><strong>Model Type:</strong> {'Hierarchical (Partial Pooling)' if is_hierarchical else 'Simple'}</p>
         <p><strong>Observations:</strong> {len(data)}</p>
+        {retailers_line_html}
         
         <!-- Convergence Status -->
         <div class="convergence {'success' if results.converged else 'warning'}">
@@ -880,6 +926,9 @@ def _create_html_content(results, data, output_dir, group_path, base_vs_promo_pa
         
         <!-- Group Comparison (if hierarchical) -->
         {f'<h2>🏪 Retailer Comparison</h2><p>Group-specific elasticities with partial pooling toward global mean.</p><img src="group_comparison.png" alt="Group Comparison">' if group_path else ''}
+
+        <!-- Retailer Availability Table (if flags exist) -->
+        {availability_table_html}
         
         <!-- Revenue Impact Table (Base Price) -->
         <h2>📋 Revenue Impact Table (Base Price)</h2>
