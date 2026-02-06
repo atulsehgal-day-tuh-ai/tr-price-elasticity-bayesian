@@ -98,6 +98,16 @@ ls
 - `pwd`: prints your current directory so you can visually confirm it
 - `ls`: confirms you’re in the repo (you should see `run_analysis.py`, `requirements.txt`, `scripts/`, etc.)
 
+### Always pull the latest code (recommended habit)
+
+Especially on a VM (or any shared environment), get in the habit of pulling before you run:
+
+```bash
+git pull --ff-only
+```
+
+If this fails, it means your local branch has diverged (you have local commits). In that case, stop and decide whether you want to rebase/merge.
+
 ---
 
 ## 2.1 (Optional but recommended) Enable `git push` from the VM (GitHub SSH key)
@@ -305,6 +315,42 @@ If you use an SSH key (Linux/macOS):
 ```bash
 scp -i /path/to/key.pem /path/to/local/bjs.csv azureuser@<VM_PUBLIC_IP_OR_HOSTNAME>:/home/azureuser/tr-price-elasticity-bayesian/data/
 ```
+
+#### Common scp issue: “Permission denied (publickey)”
+
+Symptom:
+
+- `azureuser@<IP>: Permission denied (publickey).`
+
+Cause:
+
+- You didn’t pass `-i` (or you passed the wrong key). Many Azure VMs do not allow password auth by default.
+
+Fix (Windows PowerShell example):
+
+```powershell
+scp -i C:/Users/<your-username>/.ssh/vm-mcmc-bayesian_key.pem C:/path/to/file.csv azureuser@<PUBLIC_IP>:/home/azureuser/tr-price-elasticity-bayesian/data/
+```
+
+#### If you are overwriting a file: verify upload succeeded (checksum)
+
+If you upload a new `costco.csv` (or any CSV) and want to be 100% sure the VM file is the exact one you intended, compare hashes.
+
+On your **local machine** (Windows PowerShell):
+
+```powershell
+Get-FileHash C:\path\to\costco.csv -Algorithm SHA256
+```
+
+On the **VM**:
+
+```bash
+sha256sum /home/azureuser/tr-price-elasticity-bayesian/data/costco.csv
+```
+
+Compare the SHA256 strings:
+
+- If they match, the VM file is exactly the file you uploaded.
 
 ### 5.2 Upload with rsync (best for large files / resume)
 

@@ -252,6 +252,17 @@ git clone https://github.com/<your-username>/<your-repo>.git
 
 If it's a private repo, you'll need to authenticate with a [GitHub Personal Access Token](https://github.com/settings/tokens) as the password.
 
+### Step 4.1a (VERY IMPORTANT): Always pull latest before you run
+
+Once you are connected to the VM and inside your repo folder, always pull the latest code before running anything:
+
+```bash
+cd /home/azureuser/<your-repo>
+git pull --ff-only
+```
+
+If you already have a venv activated, it’s still fine to run `git pull` (it does not depend on Python).
+
 ### Step 4.1b (Recommended): Enable `git push` from the VM (GitHub SSH key)
 
 If you plan to edit code/docs on the VM and push back to GitHub, HTTPS auth can be annoying on a headless VM (it may fail to prompt for credentials).
@@ -347,6 +358,15 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
+🚨 **IMPORTANT (do this every session before you run code): pull the latest repo**  
+After activating your venv and `cd`’d into your repo folder, always run:
+
+```bash
+git pull --ff-only
+```
+
+This prevents you from running stale code on the VM (the most common “why is my VM behaving differently than my laptop?” issue).
+
 If you get a "Permission denied" error on activate:
 ```bash
 chmod +x .venv/bin/activate
@@ -385,6 +405,48 @@ For the best experience, reopen Cursor pointed at your project:
 Now Cursor's file explorer, terminal, and AI features are all scoped to your project on the VM.
 
 ---
+
+## Part 4b: Upload data files to the VM (and verify overwrites)
+
+If your input CSVs are on your laptop/desktop, you’ll typically upload them via `scp` from your local machine to the VM.
+
+### Windows PowerShell example (recommended)
+
+Run on your **local machine**:
+
+```powershell
+scp -i C:/Users/<your-username>/.ssh/vm-mcmc-bayesian_key.pem `
+  C:/path/to/bjs.csv `
+  C:/path/to/sams.csv `
+  C:/path/to/costco.csv `
+  azureuser@<PUBLIC_IP>:/home/azureuser/<your-repo>/data/
+```
+
+#### Common scp issue: “Permission denied (publickey)”
+
+Symptom:
+
+- `Permission denied (publickey).`
+
+Fix:
+
+- Ensure you passed the correct private key with `-i ...`.
+
+#### If you are overwriting a file: verify upload succeeded (checksum)
+
+On your local machine (PowerShell):
+
+```powershell
+Get-FileHash C:\path\to\costco.csv -Algorithm SHA256
+```
+
+On the VM:
+
+```bash
+sha256sum /home/azureuser/<your-repo>/data/costco.csv
+```
+
+If the SHA256 strings match, the VM file is exactly the file you uploaded.
 
 ## Part 5: tmux — Keep Your Jobs Running
 
