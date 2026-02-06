@@ -45,6 +45,12 @@ class PrepConfig:
     include_seasonality: bool = True
     include_promotions: bool = True
     include_time_trend: bool = True
+    # Time-trend anchor:
+    # By default Week_Number is computed relative to the earliest date present in the
+    # transformed dataset. To make Week_Number stable across runs that include/exclude
+    # retailers (e.g., adding Costco which starts earlier), set a fixed origin date.
+    # Example: "2023-01-01"
+    week_number_origin_date: Optional[str] = None
     # Dependent variable rule:
     # Always model Volume Sales (normalized consumption quantity). If Volume Sales
     # is missing for a retailer, compute as Unit Sales × factor (per retailer).
@@ -794,8 +800,21 @@ class ElasticityDataPrep:
         df = df.sort_values('Date').reset_index(drop=True)
 
         if self.config.include_time_trend:
-            min_date = df['Date'].min()
-            df['Week_Number'] = ((df['Date'] - min_date).dt.days / 7).astype(int)
+            origin = self.config.week_number_origin_date
+            if origin is None:
+                origin_date = df['Date'].min()
+            else:
+                try:
+                    origin_date = pd.to_datetime(origin)
+                except Exception as e:
+                    raise ValueError(
+                        f"Invalid PrepConfig.week_number_origin_date={origin!r}. "
+                        "Provide an ISO date string like '2023-01-01'."
+                    ) from e
+
+            # Normalize to date boundary to avoid any unexpected time-of-day shifts.
+            origin_date = pd.Timestamp(origin_date).normalize()
+            df['Week_Number'] = ((df['Date'] - origin_date).dt.days / 7).astype(int)
 
         return df
 
