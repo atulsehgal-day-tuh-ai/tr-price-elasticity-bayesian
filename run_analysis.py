@@ -134,6 +134,50 @@ def _parse_volume_sales_factors(items) -> dict:
     return out
 
 
+def append_run_log(config: dict, results, output_dir: Path, repo_root: Path = None):
+    """
+    Append a one-line summary to run_log.txt after each pipeline run.
+    Captures: timestamp, key sampling params, output dir, and convergence metrics.
+    """
+    if repo_root is None:
+        repo_root = Path.cwd()
+
+    log_path = repo_root / "run_log.txt"
+
+    model = config.get("model", {})
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    tune = model.get("n_tune", "?")
+    samples = model.get("n_samples", "?")
+    chains = model.get("n_chains", "?")
+    target = model.get("target_accept", "?")
+    seed = model.get("random_seed", "?")
+
+    converged = getattr(results, "converged", None)
+    rhat = getattr(results, "rhat_max", None)
+    ess = getattr(results, "ess_min", None)
+    divs = getattr(results, "n_divergences", None)
+
+    conv_str = f"converged={converged}"
+    if rhat is not None:
+        conv_str += f" rhat={rhat:.4f}"
+    if ess is not None:
+        conv_str += f" ess={ess:.0f}"
+    if divs is not None:
+        conv_str += f" divergences={divs}"
+
+    line = (
+        f"{timestamp} | tune={tune} samples={samples} chains={chains} "
+        f"target_accept={target} seed={seed} | "
+        f"output={output_dir} | {conv_str}\n"
+    )
+
+    try:
+        with open(log_path, "a") as f:
+            f.write(line)
+    except Exception:
+        pass  # Don't let logging failures break the pipeline
+
+
 # ============================================================================
 # CONFIGURATION LOADING
 # ============================================================================
@@ -558,6 +602,11 @@ def main():
     try:
         results = run_pipeline(config, logger)
         logger.info("\n✓ Pipeline completed successfully!")
+
+        # Auto-log this run to run_log.txt
+        append_run_log(config, results, output_dir)
+        logger.info(f"✓ Run logged to: {Path.cwd() / 'run_log.txt'}")
+
         return 0
         
     except Exception as e:

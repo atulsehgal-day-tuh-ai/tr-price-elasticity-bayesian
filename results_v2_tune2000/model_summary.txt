@@ -1,0 +1,35 @@
+================================================================================
+BAYESIAN ELASTICITY MODEL RESULTS
+================================================================================
+
+⚠️  Convergence warnings:
+  - Divergences: 16 (should be 0)
+
+Observations: 479
+Chains: 4
+Samples per chain: 2000
+
+--------------------------------------------------------------------------------
+POSTERIOR ESTIMATES
+--------------------------------------------------------------------------------
+
+Base Price Elasticity: -1.831 [-2.729, -1.171]
+  → Demand is ELASTIC (price increases hurt revenue)
+
+Promotional Elasticity: -4.253 [-4.855, -3.776]
+  → Promotions are ~2.3x more responsive than base price (magnitude ratio)
+
+Cross-Price Elasticity: -0.095 [-0.229, 0.041]
+
+Seasonal Effects:
+  Spring: 0.090 [0.049, 0.131]
+    → +9.4% vs Winter
+  Summer: 0.196 [0.155, 0.236]
+    → +21.7% vs Winter
+  Fall: 0.022 [-0.018, 0.062]
+    → +2.2% vs Winter
+
+Time Trend: -0.001 [-0.001, -0.001]
+  → -4.6% annualized volume change (holding price constant)
+
+================================================================================

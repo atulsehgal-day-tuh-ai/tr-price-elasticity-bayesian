@@ -1,0 +1,76 @@
+2026-02-07 01:10:47,831 - PriceElasticityAnalysis - INFO - ================================================================================
+2026-02-07 01:10:47,831 - PriceElasticityAnalysis - INFO - STARTING BAYESIAN PRICE ELASTICITY ANALYSIS
+2026-02-07 01:10:47,831 - PriceElasticityAnalysis - INFO - ================================================================================
+2026-02-07 01:10:47,831 - PriceElasticityAnalysis - INFO - 
+Timestamp: 2026-02-07 01:10:47
+2026-02-07 01:10:47,831 - PriceElasticityAnalysis - INFO - Output directory: results_v4_tune3000
+2026-02-07 01:10:47,831 - PriceElasticityAnalysis - INFO - 
+================================================================================
+2026-02-07 01:10:47,831 - PriceElasticityAnalysis - INFO - STEP 1: DATA PREPARATION
+2026-02-07 01:10:47,831 - PriceElasticityAnalysis - INFO - ================================================================================
+2026-02-07 01:10:47,996 - PriceElasticityAnalysis - INFO - 
+✓ Data preparation complete
+2026-02-07 01:10:47,996 - PriceElasticityAnalysis - INFO -   Final shape: (479, 21)
+2026-02-07 01:10:47,997 - PriceElasticityAnalysis - INFO -   Date range: 2023-01-01 00:00:00 to 2026-01-25 00:00:00
+2026-02-07 01:10:48,008 - PriceElasticityAnalysis - INFO -   Saved to: results_v4_tune3000/prepared_data.csv
+2026-02-07 01:10:48,008 - PriceElasticityAnalysis - INFO - 
+================================================================================
+2026-02-07 01:10:48,008 - PriceElasticityAnalysis - INFO - STEP 2: BAYESIAN MODEL FITTING
+2026-02-07 01:10:48,008 - PriceElasticityAnalysis - INFO - ================================================================================
+2026-02-07 01:10:48,009 - PriceElasticityAnalysis - INFO - 
+Model type: hierarchical
+2026-02-07 01:10:48,009 - PriceElasticityAnalysis - INFO - Prior specification: default
+2026-02-07 01:10:48,009 - PriceElasticityAnalysis - INFO - MCMC settings: 4000 samples × 4 chains
+2026-02-07 01:24:38,547 - PriceElasticityAnalysis - INFO - 
+✓ Model fitting complete
+2026-02-07 01:24:38,547 - PriceElasticityAnalysis - INFO -   Convergence: ⚠️ Warnings
+2026-02-07 01:24:38,547 - PriceElasticityAnalysis - INFO -   Max R-hat: 1.0017
+2026-02-07 01:24:38,547 - PriceElasticityAnalysis - INFO -   Min ESS: 1589
+2026-02-07 01:24:38,547 - PriceElasticityAnalysis - INFO - 
+================================================================================
+2026-02-07 01:24:38,547 - PriceElasticityAnalysis - INFO - STEP 3: SAVING RESULTS
+2026-02-07 01:24:38,547 - PriceElasticityAnalysis - INFO - ================================================================================
+2026-02-07 01:24:38,548 - PriceElasticityAnalysis - INFO - 
+✓ Summary saved to: results_v4_tune3000/model_summary.txt
+2026-02-07 01:24:38,937 - PriceElasticityAnalysis - INFO - ✓ Trace saved to: results_v4_tune3000/trace.nc
+2026-02-07 01:24:38,940 - PriceElasticityAnalysis - INFO - ✓ Results table saved to: results_v4_tune3000/results_summary.csv
+2026-02-07 01:24:38,940 - PriceElasticityAnalysis - INFO - 
+================================================================================
+2026-02-07 01:24:38,940 - PriceElasticityAnalysis - INFO - STEP 4: GENERATING VISUALIZATIONS
+2026-02-07 01:24:38,940 - PriceElasticityAnalysis - INFO - ================================================================================
+2026-02-07 01:24:50,116 - PriceElasticityAnalysis - INFO - 
+✓ All plots saved to: results_v4_tune3000/plots
+2026-02-07 01:24:50,116 - PriceElasticityAnalysis - INFO - 
+================================================================================
+2026-02-07 01:24:50,116 - PriceElasticityAnalysis - INFO - STEP 5: GENERATING HTML REPORT
+2026-02-07 01:24:50,116 - PriceElasticityAnalysis - INFO - ================================================================================
+2026-02-07 01:25:01,123 - PriceElasticityAnalysis - INFO - 
+✓ HTML report generated: results_v4_tune3000/elasticity_report.html
+2026-02-07 01:25:01,123 - PriceElasticityAnalysis - INFO - 
+================================================================================
+2026-02-07 01:25:01,123 - PriceElasticityAnalysis - INFO - ✓ ANALYSIS COMPLETE
+2026-02-07 01:25:01,123 - PriceElasticityAnalysis - INFO - ================================================================================
+2026-02-07 01:25:01,123 - PriceElasticityAnalysis - INFO - 
+📊 KEY RESULTS:
+2026-02-07 01:25:01,123 - PriceElasticityAnalysis - INFO -   Base Price Elasticity: -1.821 [-2.721, -1.154]
+2026-02-07 01:25:01,123 - PriceElasticityAnalysis - INFO -   Promotional Elasticity: -4.249 [-4.836, -3.792]
+2026-02-07 01:25:01,123 - PriceElasticityAnalysis - INFO -   Cross-Price Elasticity: -0.094 [-0.229, 0.040]
+2026-02-07 01:25:01,123 - PriceElasticityAnalysis - INFO - 
+  → Demand is ELASTIC (price increases hurt revenue)
+2026-02-07 01:25:01,123 - PriceElasticityAnalysis - INFO - 
+📁 OUTPUT FILES:
+2026-02-07 01:25:01,123 - PriceElasticityAnalysis - INFO -   Directory: results_v4_tune3000
+2026-02-07 01:25:01,123 - PriceElasticityAnalysis - INFO -   - prepared_data.csv
+2026-02-07 01:25:01,124 - PriceElasticityAnalysis - INFO -   - model_summary.txt
+2026-02-07 01:25:01,124 - PriceElasticityAnalysis - INFO -   - results_summary.csv
+2026-02-07 01:25:01,124 - PriceElasticityAnalysis - INFO -   - plots/ (all diagnostic plots)
+2026-02-07 01:25:01,124 - PriceElasticityAnalysis - INFO -   - elasticity_report.html
+2026-02-07 01:25:01,124 - PriceElasticityAnalysis - INFO -   - analysis.log
+2026-02-07 01:25:01,124 - PriceElasticityAnalysis - INFO - 
+💡 NEXT STEPS:
+2026-02-07 01:25:01,124 - PriceElasticityAnalysis - INFO -   1. Review HTML report: results_v4_tune3000/elasticity_report.html
+2026-02-07 01:25:01,124 - PriceElasticityAnalysis - INFO -   2. Check convergence in model_summary.txt
+2026-02-07 01:25:01,124 - PriceElasticityAnalysis - INFO -   3. Use results_summary.csv for further analysis
+2026-02-07 01:25:01,124 - PriceElasticityAnalysis - INFO - 
+✓ Pipeline completed successfully!
+2026-02-07 01:25:01,125 - PriceElasticityAnalysis - INFO - ✓ Run logged to: /home/azureuser/tr-price-elasticity-bayesian/run_log.txt

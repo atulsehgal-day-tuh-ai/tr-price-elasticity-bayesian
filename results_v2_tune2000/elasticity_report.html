@@ -1,0 +1,320 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Price Elasticity Analysis Report</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #764ba2;
+            margin-top: 40px;
+            border-left: 5px solid #764ba2;
+            padding-left: 15px;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 10px 0;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .stat-card h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .stat-card .value {
+            font-size: 28px;
+            font-weight: bold;
+            margin: 5px 0;
+        }
+        .stat-card .subtext {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+        .convergence {
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .convergence.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .convergence.warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin: 20px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background: #667eea;
+            color: white;
+        }
+        tr:hover {
+            background: #f5f5f5;
+        }
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Bayesian Price Elasticity Analysis Report</h1>
+        
+        <p><strong>Generated:</strong> 2026-02-07 00:48:59</p>
+        <p><strong>Model Type:</strong> Hierarchical (Partial Pooling)</p>
+        <p><strong>Observations:</strong> 479</p>
+        <p><strong>Retailers Included:</strong> BJ's, Costco, Sam's Club</p>
+        
+        <!-- Convergence Status -->
+        <div class="convergence warning">
+            <h3>⚠️ Convergence Warnings</h3>
+            <p>Max R-hat: 1.0029 (should be < 1.01)</p>
+            <p>Min ESS: 866 (should be > 400)</p>
+            <p>Divergences: 16 (should be 0)</p>
+        </div>
+        
+        <!-- Key Results -->
+        <h2>📊 Key Results</h2>
+        
+        <div class="stat-card">
+            <h3>Base Price Elasticity</h3>
+            <div class="value">-1.831</div>
+            <div class="subtext">95% CI: [-2.729, -1.171]</div>
+            <div class="subtext">Demand is ELASTIC (|ε| > 1)</div>
+        </div>
+
+        <div class="stat-card"><h3>Promotional Elasticity</h3><div class="value">-4.253</div><div class="subtext">95% CI: [-4.855, -3.776]</div></div>
+        
+        <div class="stat-card"><h3>Cross-Price Elasticity</h3><div class="value">-0.095</div><div class="subtext">95% CI: [-0.229, 0.041]</div></div>
+        
+        
+        
+        <!-- MCMC Diagnostics -->
+        <h2>🔬 MCMC Diagnostics</h2>
+        <p>Trace plots show chain mixing and convergence. All chains should mix well with no trends.</p>
+        <img src="trace_plot.png" alt="Trace Plot">
+        
+        <!-- Posterior Distributions -->
+        <h2>📈 Posterior Distributions</h2>
+        <p>Posterior distributions show parameter estimates with uncertainty. Narrower distributions indicate more certainty.</p>
+        <img src="posterior_plot.png" alt="Posterior Distributions">
+        
+        <!-- Seasonal Analysis -->
+        <h2>🌱 Seasonal Analysis</h2>
+        <p>Seasonal patterns in sales and estimated seasonal effects relative to Winter baseline.</p>
+        <img src="seasonal_plot.png" alt="Seasonal Patterns">
+
+        <!-- Time Trend -->
+        <h2>📉 Underlying Demand Trend</h2><p>Volume trend over time controlling for price, promotions, and seasonality. Annualized change: <strong>-4.6%</strong> [-6.4%, -2.7%].</p><img src="time_trend_plot.png" alt="Time Trend">
+        
+        <!-- Base vs Promo Comparison (V2) -->
+        <h2>⚖️ Base vs Promotional Elasticity</h2><p>Side-by-side comparison of strategic (base) vs tactical (promo) responsiveness.</p><img src="base_vs_promo_comparison.png" alt="Base vs Promo Comparison">
+
+        <!-- Revenue Scenarios - Base -->
+        <h2>💰 Revenue Scenarios - Base Price Changes</h2>
+        <p>Expected revenue impact of different <strong>base price</strong> changes with uncertainty bands.</p>
+        <img src="revenue_scenarios_base.png" alt="Revenue Scenarios (Base)">
+
+        <!-- Revenue Scenarios - Promo -->
+        <h2>🏷️ Revenue Scenarios - Promotions</h2><p>Expected revenue impact of promotional discount depths with uncertainty bands.</p><img src="revenue_scenarios_promo.png" alt="Revenue Scenarios (Promo)">
+        
+        <!-- Group Comparison (if hierarchical) -->
+        <h2>🏪 Retailer Comparison</h2><p>Group-specific elasticities with partial pooling toward global mean.</p><img src="group_comparison.png" alt="Group Comparison">
+
+        <!-- Retailer Availability Table (if flags exist) -->
+        
+        <h2>🧾 Retailer Feature Availability</h2>
+        <p>These flags are used for masking so retailers with missing features (e.g., Costco promo/competitor) can still be included safely.</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Retailer</th>
+                    <th>has_promo</th>
+                    <th>has_competitor</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>BJ's</td><td>1</td><td>1</td></tr>
+<tr><td>Costco</td><td>1</td><td>0</td></tr>
+<tr><td>Sam's Club</td><td>1</td><td>1</td></tr>
+
+            </tbody>
+        </table>
+        
+        
+        <!-- Revenue Impact Table (Base Price) -->
+        <h2>📋 Revenue Impact Table (Base Price)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Base Price Change</th>
+                    <th>Expected Volume Impact</th>
+                    <th>Expected Revenue Impact</th>
+                    <th>Probability Positive</th>
+                </tr>
+            </thead>
+            <tbody>
+
+                <tr>
+                    <td>-5%</td>
+                    <td>+9.2%</td>
+                    <td style="color: green; font-weight: bold;">
+                        +3.7%
+                    </td>
+                    <td>99%</td>
+                </tr>
+
+                <tr>
+                    <td>-3%</td>
+                    <td>+5.5%</td>
+                    <td style="color: green; font-weight: bold;">
+                        +2.3%
+                    </td>
+                    <td>99%</td>
+                </tr>
+
+                <tr>
+                    <td>-1%</td>
+                    <td>+1.8%</td>
+                    <td style="color: green; font-weight: bold;">
+                        +0.8%
+                    </td>
+                    <td>99%</td>
+                </tr>
+
+                <tr>
+                    <td>+1%</td>
+                    <td>-1.8%</td>
+                    <td style="color: red; font-weight: bold;">
+                        -0.8%
+                    </td>
+                    <td>1%</td>
+                </tr>
+
+                <tr>
+                    <td>+3%</td>
+                    <td>-5.5%</td>
+                    <td style="color: red; font-weight: bold;">
+                        -2.7%
+                    </td>
+                    <td>1%</td>
+                </tr>
+
+                <tr>
+                    <td>+5%</td>
+                    <td>-9.2%</td>
+                    <td style="color: red; font-weight: bold;">
+                        -4.6%
+                    </td>
+                    <td>0%</td>
+                </tr>
+
+            </tbody>
+        </table>
+
+        <h2>📋 Revenue Impact Table (Promotions)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Discount Depth</th>
+                    <th>Expected Volume Impact</th>
+                    <th>Expected Revenue Impact</th>
+                    <th>Probability Positive</th>
+                </tr>
+            </thead>
+            <tbody>
+
+                <tr>
+                    <td>5% off</td>
+                    <td>+21.3%</td>
+                    <td style="color: green; font-weight: bold;">
+                        +15.2%
+                    </td>
+                    <td>100%</td>
+                </tr>
+
+                <tr>
+                    <td>10% off</td>
+                    <td>+42.5%</td>
+                    <td style="color: green; font-weight: bold;">
+                        +28.3%
+                    </td>
+                    <td>100%</td>
+                </tr>
+
+                <tr>
+                    <td>15% off</td>
+                    <td>+63.8%</td>
+                    <td style="color: green; font-weight: bold;">
+                        +39.2%
+                    </td>
+                    <td>100%</td>
+                </tr>
+
+                <tr>
+                    <td>20% off</td>
+                    <td>+85.1%</td>
+                    <td style="color: green; font-weight: bold;">
+                        +48.0%
+                    </td>
+                    <td>100%</td>
+                </tr>
+
+            </tbody>
+        </table>
+        
+        <div class="footer">
+            <p>Generated by Bayesian Price Elasticity Analysis System</p>
+            <p>© 2026 | Production-Ready Analytics</p>
+        </div>
+    </div>
+</body>
+</html>
