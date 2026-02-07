@@ -181,6 +181,9 @@ output:
   
   # What to generate
   generate_html: true
+  # Contract-driven reports (recommended). If omitted, falls back to generate_html.
+  generate_statistical_report: true
+  generate_business_report: true
   generate_plots: true
   save_trace: true
   save_summary: true

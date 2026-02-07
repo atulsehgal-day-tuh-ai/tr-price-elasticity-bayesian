@@ -18,6 +18,9 @@ build/
 # Jupyter
 .ipynb_checkpoints/
 
+# Cursor / local IDE state
+.cursor/
+
 # Environments
 .venv/
 venv/

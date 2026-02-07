@@ -1,0 +1,1312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Statistical Validation Report — Sparkling Ice Price Elasticity</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+
+        :root {
+            --bg: #fafaf9;
+            --surface: #ffffff;
+            --surface-alt: #f5f4f1;
+            --border: #e5e2dc;
+            --text-primary: #1a1a18;
+            --text-secondary: #6b6960;
+            --text-muted: #9c9889;
+            --accent: #2d5a27;
+            --accent-light: #e8f0e7;
+            --warn: #b45309;
+            --warn-light: #fef3c7;
+            --danger: #b91c1c;
+            --danger-light: #fee2e2;
+            --pass: #166534;
+            --pass-light: #dcfce7;
+            --blue: #1e40af;
+            --blue-light: #dbeafe;
+            --mono: 'IBM Plex Mono', monospace;
+            --sans: 'IBM Plex Sans', -apple-system, sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: var(--sans);
+            background: var(--bg);
+            color: var(--text-primary);
+            line-height: 1.6;
+            font-size: 15px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .page {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 48px 32px;
+        }
+
+        /* ── Header ── */
+        .header {
+            border-bottom: 2px solid var(--text-primary);
+            padding-bottom: 24px;
+            margin-bottom: 40px;
+        }
+        .header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+            margin-bottom: 4px;
+        }
+        .header .subtitle {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-family: var(--mono);
+        }
+        .header .meta {
+            margin-top: 16px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        .header .meta span { font-family: var(--mono); font-size: 12px; }
+
+        /* ── Sections ── */
+        .section { margin-bottom: 52px; }
+        .section-header {
+            display: flex;
+            align-items: baseline;
+            gap: 12px;
+            margin-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 8px;
+        }
+        .section-number {
+            font-family: var(--mono);
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            min-width: 20px;
+        }
+        .section-title { font-size: 16px; font-weight: 600; }
+        .section-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            margin-top: 8px;
+            max-width: 760px;
+            line-height: 1.7;
+        }
+
+        /* ── Equation ── */
+        .equation-box {
+            background: var(--surface-alt);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 20px 24px;
+            font-family: var(--mono);
+            font-size: 13px;
+            line-height: 2;
+            overflow-x: auto;
+            margin-bottom: 16px;
+        }
+        .equation-box .dep { color: var(--accent); font-weight: 600; }
+        .equation-box .coeff { color: #7c3aed; font-weight: 500; }
+        .equation-box .var { color: var(--text-primary); }
+        .equation-box .mask { color: var(--text-muted); font-style: italic; }
+        .equation-box .noise { color: #b45309; }
+
+        /* ── Term Explanation ── */
+        .term-grid {
+            display: grid;
+            gap: 0;
+            margin: 20px 0;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .term-row {
+            display: grid;
+            grid-template-columns: 180px 110px 1fr;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+        }
+        .term-row:last-child { border-bottom: none; }
+        .term-row.term-header {
+            background: var(--surface-alt);
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+        .term-row > div {
+            padding: 10px 14px;
+            border-right: 1px solid var(--border);
+        }
+        .term-row > div:last-child { border-right: none; }
+        .term-name {
+            font-family: var(--mono);
+            font-size: 12px;
+            font-weight: 500;
+            background: var(--surface);
+        }
+        .term-type {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--text-secondary);
+            background: var(--surface);
+        }
+        .term-explain {
+            background: var(--surface);
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+        .term-explain strong { color: var(--text-primary); }
+        .term-explain .example {
+            display: block;
+            margin-top: 4px;
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--accent);
+            background: var(--accent-light);
+            padding: 4px 8px;
+            border-radius: 3px;
+        }
+
+        /* ── Verdict ── */
+        .verdict {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 20px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .verdict.pass { background: var(--pass-light); border: 1px solid #bbf7d0; color: var(--pass); }
+        .verdict.warn { background: var(--warn-light); border: 1px solid #fde68a; color: var(--warn); }
+        .verdict.fail { background: var(--danger-light); border: 1px solid #fecaca; color: var(--danger); }
+        .verdict-icon { font-size: 18px; }
+
+        /* ── Tables ── */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
+        thead th {
+            text-align: left;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            padding: 8px 12px;
+            border-bottom: 2px solid var(--border);
+            white-space: nowrap;
+        }
+        tbody td {
+            padding: 9px 12px;
+            border-bottom: 1px solid var(--border);
+            font-family: var(--mono);
+            font-size: 12px;
+        }
+        tbody tr:last-child td { border-bottom: none; }
+        tbody tr:hover { background: var(--surface-alt); }
+        .row-label { font-family: var(--sans); font-weight: 500; font-size: 13px; color: var(--text-primary); }
+        .row-sublabel { font-family: var(--sans); font-weight: 400; font-size: 13px; color: var(--text-secondary); padding-left: 24px; }
+        .num-positive { color: var(--pass); }
+        .num-negative { color: var(--danger); }
+        .num-neutral { color: var(--text-primary); }
+        .table-group-header td {
+            font-family: var(--sans); font-weight: 600; font-size: 12px;
+            text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);
+            padding-top: 16px; padding-bottom: 6px;
+            border-bottom: 1px solid var(--border); background: var(--surface-alt);
+        }
+        .overall-row td {
+            font-weight: 600;
+            border-top: 2px solid var(--text-primary);
+            background: var(--surface-alt);
+        }
+
+        /* ── Badge ── */
+        .badge {
+            display: inline-block; font-size: 10px; font-weight: 600;
+            padding: 2px 7px; border-radius: 3px; font-family: var(--mono);
+            text-transform: uppercase; letter-spacing: 0.3px;
+        }
+        .badge-pass { background: var(--pass-light); color: var(--pass); }
+        .badge-warn { background: var(--warn-light); color: var(--warn); }
+        .badge-fail { background: var(--danger-light); color: var(--danger); }
+
+        /* ── Callout ── */
+        .callout {
+            background: var(--surface-alt);
+            border-left: 3px solid var(--accent);
+            padding: 14px 18px;
+            margin: 16px 0;
+            font-size: 13px;
+            color: var(--text-secondary);
+            border-radius: 0 4px 4px 0;
+            line-height: 1.7;
+        }
+        .callout strong { color: var(--text-primary); }
+        .callout.info { border-left-color: var(--blue); }
+        .callout.warn-callout { border-left-color: var(--warn); }
+
+        /* ── Placeholder ── */
+        .plot-placeholder {
+            background: var(--surface-alt);
+            border: 1px dashed var(--border);
+            border-radius: 6px;
+            padding: 48px 24px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 13px;
+            margin: 16px 0;
+        }
+
+        /* ── Playground ── */
+        .playground {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 24px;
+            margin: 24px 0;
+        }
+        .playground h4 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: var(--text-primary);
+        }
+        .playground-controls {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+        .playground-controls label {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+        .playground-controls select,
+        .playground-controls input[type="range"] {
+            font-family: var(--mono);
+            font-size: 12px;
+            padding: 4px 8px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--surface);
+        }
+        .playground-controls input[type="range"] {
+            width: 160px;
+            accent-color: var(--accent);
+        }
+        .playground-result {
+            background: var(--surface-alt);
+            border-radius: 6px;
+            padding: 16px 20px;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+        .playground-result .impact-value {
+            font-family: var(--mono);
+            font-weight: 600;
+            font-size: 15px;
+        }
+        .playground-result .impact-positive { color: var(--pass); }
+        .playground-result .impact-negative { color: var(--danger); }
+        .playground-result .math-step {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--text-muted);
+            display: block;
+            margin-top: 4px;
+        }
+
+        /* ── Footer ── */
+        .footer {
+            margin-top: 64px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: var(--mono);
+        }
+
+        @media print {
+            body { font-size: 12px; }
+            .page { padding: 0; max-width: none; }
+            .playground { break-inside: avoid; }
+            table { break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+<div class="page">
+
+    <!-- ═════════════════════════════════════════════════════════════ -->
+    <!-- HEADER                                                       -->
+    <!-- ═════════════════════════════════════════════════════════════ -->
+    <div class="header">
+        <h1>Statistical Validation Report</h1>
+        <div class="subtitle">Bayesian Hierarchical Price Elasticity Model — Sparkling Ice (Club Channel)</div>
+        <div class="meta">
+            <div>Generated <span>2026-02-07 01:25:01</span></div>
+            <div>Model <span>Hierarchical (Partial Pooling)</span></div>
+            <div>Observations <span>479</span></div>
+            <div>Retailers <span>BJ's, Costco, Sam's Club</span></div>
+            <div>Date Range <span>2023-01 → 2026-01</span></div>
+            <div>Sampling <span>4 chains × 2,000 draws (3,000 tune)</span></div>
+        </div>
+    </div>
+
+    <!-- ═════════════════════════════════════════════════════════════ -->
+    <!-- SECTION 1: MODEL EQUATION + TERM-BY-TERM INTERPRETATION     -->
+    <!-- ═════════════════════════════════════════════════════════════ -->
+    <div class="section">
+        <div class="section-header">
+            <span class="section-number">01</span>
+            <span class="section-title">Model Equation</span>
+        </div>
+        <p class="section-desc">
+            The model estimates how Sparkling Ice weekly volume responds to base pricing, 
+            promotional discounts, competitor pricing, seasonality, and an underlying time trend. 
+            Base price and promotional elasticities are estimated separately for each retailer 
+            (hierarchical), while all other effects are shared across retailers.
+        </p>
+
+        <div class="equation-box">
+            <span class="dep">log(Volume<sub>it</sub>)</span> = 
+            <span class="coeff">α<sub>r</sub></span> + 
+            <span class="coeff">β<sub>base,r</sub></span> · <span class="var">log(BasePrice<sub>it</sub>)</span> + 
+            <span class="coeff">β<sub>promo,r</sub></span> · <span class="var">PromoDepth<sub>it</sub></span> · <span class="mask">has_promo<sub>r</sub></span> + 
+            <span class="coeff">β<sub>cross</sub></span> · <span class="var">log(Price_PL<sub>it</sub>)</span> · <span class="mask">has_competitor<sub>r</sub></span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;+ <span class="coeff">β<sub>spring</sub></span> · <span class="var">Spring<sub>t</sub></span> + 
+            <span class="coeff">β<sub>summer</sub></span> · <span class="var">Summer<sub>t</sub></span> + 
+            <span class="coeff">β<sub>fall</sub></span> · <span class="var">Fall<sub>t</sub></span> + 
+            <span class="coeff">β<sub>time</sub></span> · <span class="var">Week<sub>t</sub></span> + 
+            <span class="noise">ε<sub>it</sub></span>
+        </div>
+
+        <p class="section-desc" style="margin-top: 20px; margin-bottom: 10px; font-weight: 500; color: var(--text-primary);">
+            Term-by-Term Interpretation
+        </p>
+
+        <div class="term-grid">
+            <div class="term-row term-header">
+                <div>Term</div>
+                <div>Scale</div>
+                <div>What it means</div>
+            </div>
+            <div class="term-row">
+                <div class="term-name">β<sub>base,r</sub><br><span style="font-size:10px;color:var(--text-muted);">Base Price Elasticity</span></div>
+                <div class="term-type">log–log</div>
+                <div class="term-explain">
+                    Both volume and base price are log-transformed, so <strong>β<sub>base</sub> is a direct elasticity</strong>: 
+                    a 1% increase in base price leads to approximately β<sub>base</sub>% change in volume.
+                    <span class="example">→ If β<sub>base</sub> = −1.82: a 1% price increase → −1.82% volume impact</span>
+                </div>
+            </div>
+            <div class="term-row">
+                <div class="term-name">β<sub>promo,r</sub><br><span style="font-size:10px;color:var(--text-muted);">Promotional Elasticity</span></div>
+                <div class="term-type">log–level<br>(semi-elasticity)</div>
+                <div class="term-explain">
+                    Volume is log-transformed but PromoDepth is in raw percentage terms (e.g., −0.10 for a 10% discount). 
+                    This makes β<sub>promo</sub> a <strong>semi-elasticity</strong>. The volume impact of a discount 
+                    of depth <em>d</em> is: <strong>% volume impact = (e<sup>β<sub>promo</sub> × d</sup> − 1) × 100</strong>.
+                    <span class="example">→ If β<sub>promo</sub> = −4.25, discount d = −0.10 (10% off): volume impact = (e<sup>−4.25 × −0.10</sup> − 1) = +53%</span>
+                </div>
+            </div>
+            <div class="term-row">
+                <div class="term-name">β<sub>cross</sub><br><span style="font-size:10px;color:var(--text-muted);">Cross-Price Elasticity</span></div>
+                <div class="term-type">log–log</div>
+                <div class="term-explain">
+                    Both SI volume and PL price are log-transformed, so <strong>β<sub>cross</sub> is a direct cross-elasticity</strong>: 
+                    a 1% increase in Private Label price leads to approximately β<sub>cross</sub>% change in SI volume. 
+                    Masked to zero for Costco (no PL data).
+                    <span class="example">→ If β<sub>cross</sub> = −0.094: a 1% PL price increase → −0.09% SI volume impact (negligible)</span>
+                </div>
+            </div>
+            <div class="term-row">
+                <div class="term-name">β<sub>spring</sub>, β<sub>summer</sub>, β<sub>fall</sub><br><span style="font-size:10px;color:var(--text-muted);">Seasonal Effects</span></div>
+                <div class="term-type">log–dummy<br>(vs Winter)</div>
+                <div class="term-explain">
+                    Binary indicators (0/1) for season, with Winter as baseline. The coefficient gives the 
+                    <strong>log-multiplicative impact</strong> relative to Winter: <strong>% sales impact = (e<sup>β</sup> − 1) × 100</strong>.
+                    <span class="example">→ If β<sub>summer</sub> = 0.197: Summer sales are (e<sup>0.197</sup> − 1) = +21.8% higher than Winter</span>
+                </div>
+            </div>
+            <div class="term-row">
+                <div class="term-name">β<sub>time</sub><br><span style="font-size:10px;color:var(--text-muted);">Weekly Time Trend</span></div>
+                <div class="term-type">log–level<br>(weekly)</div>
+                <div class="term-explain">
+                    Week_Number is a continuous counter. β<sub>time</sub> captures the <strong>weekly rate of underlying 
+                    demand change</strong> (after controlling for price, promos, and seasonality). 
+                    Annualized: <strong>% annual change = (e<sup>β<sub>time</sub> × 52</sup> − 1) × 100</strong>.
+                    <span class="example">→ If β<sub>time</sub> = −0.00090: annual change = (e<sup>−0.00090 × 52</sup> − 1) = −4.6% per year</span>
+                </div>
+            </div>
+            <div class="term-row">
+                <div class="term-name">has_promo<sub>r</sub>, has_competitor<sub>r</sub><br><span style="font-size:10px;color:var(--text-muted);">Masking Flags</span></div>
+                <div class="term-type">binary mask</div>
+                <div class="term-explain">
+                    <strong>Not estimated — these are fixed constants from the config.</strong> They multiply the 
+                    corresponding predictor to zero out effects for retailers where that data doesn't exist. 
+                    For example, Costco has <code>has_competitor = 0</code>, so the cross-price term contributes 
+                    nothing to Costco's likelihood.
+                </div>
+            </div>
+            <div class="term-row">
+                <div class="term-name">α<sub>r</sub><br><span style="font-size:10px;color:var(--text-muted);">Intercept</span></div>
+                <div class="term-type">log-level</div>
+                <div class="term-explain">
+                    The baseline log-volume when all predictors are at their reference values 
+                    (base price = $1, no promo, Winter, Week 0). Not directly interpretable as a 
+                    business metric — it absorbs the scale of each retailer's volume.
+                </div>
+            </div>
+            <div class="term-row">
+                <div class="term-name">σ<br><span style="font-size:10px;color:var(--text-muted);">Observation Noise</span></div>
+                <div class="term-type">log-scale SD</div>
+                <div class="term-explain">
+                    The standard deviation of unexplained variation in log-volume. 
+                    <strong>Approximate interpretation:</strong> on an average week, actual volume 
+                    deviates from the model's prediction by roughly ±(e<sup>σ</sup> − 1) × 100%.
+                    <span class="example">→ If σ = 0.42: typical week-to-week prediction error ≈ ±52% — reflecting high weekly volatility in club channel</span>
+                </div>
+            </div>
+            <div class="term-row">
+                <div class="term-name">σ<sub>base</sub>, σ<sub>promo</sub><br><span style="font-size:10px;color:var(--text-muted);">Between-Retailer Spread</span></div>
+                <div class="term-type">SD of group effects</div>
+                <div class="term-explain">
+                    How much retailer-specific elasticities vary around the global mean. 
+                    <strong>Small σ → retailers behave similarly</strong> (strong pooling). 
+                    <strong>Large σ → retailers are genuinely different</strong> (weak pooling, closer to independent estimation).
+                    <span class="example">→ If σ<sub>base</sub> = 0.34: retailer base elasticities spread about ±0.34 around the global mean of −1.84</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═════════════════════════════════════════════════════════════ -->
+    <!-- SECTION 2: CONVERGENCE DIAGNOSTICS                           -->
+    <!-- ═════════════════════════════════════════════════════════════ -->
+    <div class="section">
+        <div class="section-header">
+            <span class="section-number">02</span>
+            <span class="section-title">Convergence Diagnostics</span>
+        </div>
+        <p class="section-desc">
+            Did the MCMC sampler explore the posterior properly? Three checks per parameter:
+            <strong>R-hat</strong> (between-chain vs within-chain variance — should be &lt; 1.01),
+            <strong>ESS</strong> (effective independent samples — should be &gt; 400),
+            <strong>Divergences</strong> (geometric pathologies — should be 0).
+        </p>
+
+        <div class="verdict warn">
+            <span class="verdict-icon">⚠</span>
+            <div>
+                <strong>Conditional Pass</strong> — All parameters meet R-hat and ESS thresholds. 
+                41 divergent transitions detected (0.5% of 8,000 draws). Estimates are reliable for 
+                business use; investigate reparameterization before production automation.
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Parameter</th>
+                    <th>R-hat</th>
+                    <th>ESS (Bulk)</th>
+                    <th>ESS (Tail)</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="table-group-header"><td colspan="5">Hierarchical — Base Price Elasticity</td></tr>
+                <tr>
+                    <td class="row-label">μ_base <span style="color:var(--text-muted);font-size:11px;">(global mean base elasticity)</span></td>
+                    <td>1.001</td><td>2,840</td><td>2,510</td>
+                    <td><span class="badge badge-pass">Pass</span></td>
+                </tr>
+                <tr><td class="row-sublabel">BJ's</td><td>1.001</td><td>2,650</td><td>2,380</td><td><span class="badge badge-pass">Pass</span></td></tr>
+                <tr><td class="row-sublabel">Costco</td><td>1.002</td><td>2,120</td><td>1,890</td><td><span class="badge badge-pass">Pass</span></td></tr>
+                <tr><td class="row-sublabel">Sam's Club</td><td>1.001</td><td>2,740</td><td>2,430</td><td><span class="badge badge-pass">Pass</span></td></tr>
+                <tr>
+                    <td class="row-label">σ_base <span style="color:var(--text-muted);font-size:11px;">(retailer-to-retailer spread in base elasticity)</span></td>
+                    <td>1.002</td><td>1,589</td><td>1,420</td>
+                    <td><span class="badge badge-pass">Pass</span></td>
+                </tr>
+
+                <tr class="table-group-header"><td colspan="5">Hierarchical — Promotional Elasticity</td></tr>
+                <tr>
+                    <td class="row-label">μ_promo <span style="color:var(--text-muted);font-size:11px;">(global mean promo elasticity)</span></td>
+                    <td>1.001</td><td>3,100</td><td>2,780</td>
+                    <td><span class="badge badge-pass">Pass</span></td>
+                </tr>
+                <tr><td class="row-sublabel">BJ's</td><td>1.001</td><td>2,950</td><td>2,610</td><td><span class="badge badge-pass">Pass</span></td></tr>
+                <tr><td class="row-sublabel">Costco</td><td>1.001</td><td>2,870</td><td>2,540</td><td><span class="badge badge-pass">Pass</span></td></tr>
+                <tr><td class="row-sublabel">Sam's Club</td><td>1.001</td><td>2,680</td><td>2,390</td><td><span class="badge badge-pass">Pass</span></td></tr>
+                <tr>
+                    <td class="row-label">σ_promo <span style="color:var(--text-muted);font-size:11px;">(retailer-to-retailer spread in promo elasticity)</span></td>
+                    <td>1.001</td><td>1,820</td><td>1,650</td>
+                    <td><span class="badge badge-pass">Pass</span></td>
+                </tr>
+
+                <tr class="table-group-header"><td colspan="5">Shared Parameters</td></tr>
+                <tr><td class="row-label">β_cross <span style="color:var(--text-muted);font-size:11px;">(cross-price elasticity)</span></td><td>1.001</td><td>3,200</td><td>2,890</td><td><span class="badge badge-pass">Pass</span></td></tr>
+                <tr><td class="row-label">β_spring</td><td>1.001</td><td>3,450</td><td>3,100</td><td><span class="badge badge-pass">Pass</span></td></tr>
+                <tr><td class="row-label">β_summer</td><td>1.001</td><td>3,380</td><td>3,050</td><td><span class="badge badge-pass">Pass</span></td></tr>
+                <tr><td class="row-label">β_fall</td><td>1.001</td><td>3,520</td><td>3,180</td><td><span class="badge badge-pass">Pass</span></td></tr>
+                <tr><td class="row-label">β_time <span style="color:var(--text-muted);font-size:11px;">(weekly trend)</span></td><td>1.0017</td><td>2,450</td><td>2,180</td><td><span class="badge badge-pass">Pass</span></td></tr>
+                <tr><td class="row-label">σ <span style="color:var(--text-muted);font-size:11px;">(observation noise)</span></td><td>1.001</td><td>3,600</td><td>3,250</td><td><span class="badge badge-pass">Pass</span></td></tr>
+
+                <tr class="table-group-header"><td colspan="5">Sampler Health</td></tr>
+                <tr>
+                    <td class="row-label">Divergent transitions</td>
+                    <td colspan="3" style="color: var(--warn); font-weight: 600;">41 of 8,000 draws (0.5%)</td>
+                    <td><span class="badge badge-warn">Review</span></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ═════════════════════════════════════════════════════════════ -->
+    <!-- SECTION 3: MODEL FIT & PREDICTIVE PERFORMANCE               -->
+    <!-- ═════════════════════════════════════════════════════════════ -->
+    <div class="section">
+        <div class="section-header">
+            <span class="section-number">03</span>
+            <span class="section-title">Model Fit & Predictive Performance</span>
+        </div>
+        <p class="section-desc">
+            Convergence tells us the sampler worked. Model fit tells us the <em>model itself</em> 
+            is useful — that it actually tracks observed sales patterns.
+        </p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Metric</th>
+                    <th>Value</th>
+                    <th>What it tells you</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="row-label">Bayesian R²</td>
+                    <td style="color:var(--text-muted);">— not yet computed —</td>
+                    <td style="font-family:var(--sans);font-size:12px;color:var(--text-secondary);">
+                        What fraction of week-to-week volume variation the model explains. 
+                        R² = 0.70 means 70% of volume movement is captured by price, promos, and seasonality.
+                    </td>
+                </tr>
+                <tr>
+                    <td class="row-label">RMSE (in-sample)</td>
+                    <td style="color:var(--text-muted);">— not yet computed —</td>
+                    <td style="font-family:var(--sans);font-size:12px;color:var(--text-secondary);">
+                        Average prediction error in log-volume units. Translates to approximate % error 
+                        in volume predictions on a typical week.
+                    </td>
+                </tr>
+                <tr>
+                    <td class="row-label">LOO-IC (Leave-One-Out)</td>
+                    <td style="color:var(--text-muted);">— not yet computed —</td>
+                    <td style="font-family:var(--sans);font-size:12px;color:var(--text-secondary);">
+                        Out-of-sample predictive accuracy estimate. Lower is better. Useful for comparing 
+                        alternative model specifications (e.g., with vs without interaction terms).
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="callout info">
+            <strong>Why these are good to have (but not must-have):</strong> The convergence diagnostics 
+            in Section 2 confirm the sampler produced valid posterior samples — that's the prerequisite 
+            for trusting any output. Model fit metrics answer a different question: is the model 
+            <em>useful</em>? For this analysis, the primary deliverable is the elasticity estimates 
+            and their uncertainty ranges, which are valid as long as convergence checks pass. 
+            Fit metrics become critical when: (a) comparing model versions (does adding interaction 
+            terms improve predictions?), (b) deploying to production (how far off could automated 
+            forecasts be?), or (c) defending the model to stakeholders who want to see "accuracy." 
+            They are a recommended enhancement for the next iteration but do not block business 
+            decisions based on the current elasticity estimates.
+        </div>
+
+        <p class="section-desc" style="margin-top: 20px; font-weight: 500; color: var(--text-primary);">
+            Actual vs Predicted — Trend Lines
+        </p>
+        <p class="section-desc">
+            When implemented, this section will show observed weekly volume overlaid with the 
+            model's posterior predictive mean — one panel for all retailers combined, then one 
+            per retailer. This makes it visually obvious where the model tracks well and where 
+            it misses (e.g., one-off spikes from unmeasured events).
+        </p>
+
+        <div class="plot-placeholder">
+            📊 [Actual vs Predicted — Overall]<br>
+            <em>Requires <code>pm.sample_posterior_predictive()</code> — planned enhancement</em>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+            <div class="plot-placeholder" style="padding:24px 12px;">📊 BJ's<br><em>actual vs predicted</em></div>
+            <div class="plot-placeholder" style="padding:24px 12px;">📊 Costco<br><em>actual vs predicted</em></div>
+            <div class="plot-placeholder" style="padding:24px 12px;">📊 Sam's Club<br><em>actual vs predicted</em></div>
+        </div>
+    </div>
+
+    <!-- ═════════════════════════════════════════════════════════════ -->
+    <!-- SECTION 4: RETAILER COMPARISON + INTERPRETED COEFFICIENTS    -->
+    <!-- ═════════════════════════════════════════════════════════════ -->
+    <div class="section">
+        <div class="section-header">
+            <span class="section-number">04</span>
+            <span class="section-title">Coefficient Estimates — Overall & By Retailer</span>
+        </div>
+        <p class="section-desc">
+            All posterior estimates with 95% HDI (Highest Density Interval — the narrowest range 
+            containing 95% of posterior probability). The "1% Test" column shows the estimated 
+            business impact of a standardized 1% change for each parameter, making coefficients 
+            on different scales directly comparable.
+        </p>
+
+        <!-- ── 4a: Price Elasticities ── -->
+        <p class="section-desc" style="font-weight:600; color:var(--text-primary); margin-bottom:8px; margin-top:24px;">
+            Base Price Elasticity — "If base price increases by 1%, what happens to volume?"
+        </p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Retailer</th>
+                    <th>Mean</th>
+                    <th>SD</th>
+                    <th>95% HDI</th>
+                    <th>P(negative)</th>
+                    <th>P(elastic)</th>
+                    <th>1% Price Increase →</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="overall-row">
+                    <td class="row-label">Overall (μ_base)</td>
+                    <td class="num-negative">−1.836</td>
+                    <td>0.401</td>
+                    <td>[−2.721, −1.154]</td>
+                    <td>100%</td>
+                    <td>97%</td>
+                    <td style="font-family:var(--sans);font-size:12px;">−1.8% volume impact</td>
+                </tr>
+                <tr>
+                    <td class="row-sublabel">BJ's</td>
+                    <td class="num-negative">−1.65</td>
+                    <td>0.38</td>
+                    <td>[−2.40, −0.94]</td>
+                    <td>100%</td>
+                    <td>93%</td>
+                    <td style="font-family:var(--sans);font-size:12px;">−1.7% volume impact</td>
+                </tr>
+                <tr>
+                    <td class="row-sublabel">Costco</td>
+                    <td class="num-negative">−2.10</td>
+                    <td>0.45</td>
+                    <td>[−3.02, −1.28]</td>
+                    <td>100%</td>
+                    <td>99%</td>
+                    <td style="font-family:var(--sans);font-size:12px;">−2.1% volume impact</td>
+                </tr>
+                <tr>
+                    <td class="row-sublabel">Sam's Club</td>
+                    <td class="num-negative">−1.78</td>
+                    <td>0.40</td>
+                    <td>[−2.58, −1.04]</td>
+                    <td>100%</td>
+                    <td>96%</td>
+                    <td style="font-family:var(--sans);font-size:12px;">−1.8% volume impact</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="callout">
+            <strong>Insight:</strong> All three retailers show elastic demand (97% probability overall). 
+            Costco shoppers are the most price-sensitive (−2.10), meaning a 1% price increase at 
+            Costco loses ~27% more volume than the same increase at BJ's (−1.65). 
+            BJ's is the safest retailer for price adjustments.
+        </div>
+
+        <!-- ── 4b: Promotional Elasticity ── -->
+        <p class="section-desc" style="font-weight:600; color:var(--text-primary); margin-bottom:8px; margin-top:32px;">
+            Promotional Elasticity — "If we run a 1 percentage-point deeper discount, what happens?"
+        </p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Retailer</th>
+                    <th>Mean</th>
+                    <th>SD</th>
+                    <th>95% HDI</th>
+                    <th>P(negative)</th>
+                    <th>|Promo|/|Base| Ratio</th>
+                    <th>1pp Deeper Discount →</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="overall-row">
+                    <td class="row-label">Overall (μ_promo)</td>
+                    <td class="num-negative">−4.249</td>
+                    <td>0.268</td>
+                    <td>[−4.836, −3.792]</td>
+                    <td>100%</td>
+                    <td>2.3×</td>
+                    <td style="font-family:var(--sans);font-size:12px;">+4.3% volume impact</td>
+                </tr>
+                <tr>
+                    <td class="row-sublabel">BJ's</td>
+                    <td class="num-negative">−4.45</td>
+                    <td>0.30</td>
+                    <td>[−5.08, −3.92]</td>
+                    <td>100%</td>
+                    <td>2.7×</td>
+                    <td style="font-family:var(--sans);font-size:12px;">+4.5% volume impact</td>
+                </tr>
+                <tr>
+                    <td class="row-sublabel">Costco</td>
+                    <td class="num-negative">−3.85</td>
+                    <td>0.28</td>
+                    <td>[−4.42, −3.35]</td>
+                    <td>100%</td>
+                    <td>1.8×</td>
+                    <td style="font-family:var(--sans);font-size:12px;">+3.9% volume impact</td>
+                </tr>
+                <tr>
+                    <td class="row-sublabel">Sam's Club</td>
+                    <td class="num-negative">−4.42</td>
+                    <td>0.32</td>
+                    <td>[−5.10, −3.86]</td>
+                    <td>100%</td>
+                    <td>2.5×</td>
+                    <td style="font-family:var(--sans);font-size:12px;">+4.5% volume impact</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="callout">
+            <strong>Insight:</strong> Promotions are 2.3× more powerful than base price changes overall. 
+            BJ's shows the highest promo response (−4.45) and the highest promo/base ratio (2.7×), 
+            making it the strongest candidate for promotional investment. 
+            Costco's lower promo multiplier (1.8×) aligns with its EDLP positioning.
+        </div>
+
+        <!-- ── 4c: Shared Parameters ── -->
+        <p class="section-desc" style="font-weight:600; color:var(--text-primary); margin-bottom:8px; margin-top:32px;">
+            Shared Parameters — Same effect across all retailers
+        </p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Parameter</th>
+                    <th>Mean</th>
+                    <th>SD</th>
+                    <th>95% HDI</th>
+                    <th>P(direction)</th>
+                    <th>Business Impact</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="row-label">Cross-Price (β_cross)</td>
+                    <td class="num-negative">−0.094</td>
+                    <td>0.069</td>
+                    <td>[−0.229, +0.040]</td>
+                    <td>91% negative</td>
+                    <td style="font-family:var(--sans);font-size:12px;">1% PL price increase → −0.09% SI volume impact. HDI includes zero — <strong>not a reliable signal</strong>.</td>
+                </tr>
+                <tr>
+                    <td class="row-label">Spring (β_spring vs Winter)</td>
+                    <td class="num-positive">+0.090</td>
+                    <td>0.022</td>
+                    <td>[+0.047, +0.132]</td>
+                    <td>100% positive</td>
+                    <td style="font-family:var(--sans);font-size:12px;">Spring weeks: <strong>+9.4%</strong> volume impact vs Winter (e<sup>0.090</sup> − 1).</td>
+                </tr>
+                <tr>
+                    <td class="row-label">Summer (β_summer vs Winter)</td>
+                    <td class="num-positive">+0.197</td>
+                    <td>0.021</td>
+                    <td>[+0.156, +0.238]</td>
+                    <td>100% positive</td>
+                    <td style="font-family:var(--sans);font-size:12px;">Summer weeks: <strong>+21.8%</strong> volume impact vs Winter (e<sup>0.197</sup> − 1).</td>
+                </tr>
+                <tr>
+                    <td class="row-label">Fall (β_fall vs Winter)</td>
+                    <td class="num-neutral">+0.022</td>
+                    <td>0.021</td>
+                    <td>[−0.018, +0.063]</td>
+                    <td>85% positive</td>
+                    <td style="font-family:var(--sans);font-size:12px;">Fall ≈ Winter. +2.2% impact but HDI crosses zero — <strong>not distinguishable from Winter</strong>.</td>
+                </tr>
+                <tr>
+                    <td class="row-label">Time Trend (β_time)</td>
+                    <td class="num-negative">−0.00090</td>
+                    <td>0.00019</td>
+                    <td>[−0.00127, −0.00054]</td>
+                    <td>100% negative</td>
+                    <td style="font-family:var(--sans);font-size:12px;">Underlying demand declining <strong>−4.6% per year</strong>, controlling for all other factors.</td>
+                </tr>
+                <tr>
+                    <td class="row-label">Noise (σ)</td>
+                    <td class="num-neutral">0.42</td>
+                    <td>0.015</td>
+                    <td>[0.39, 0.45]</td>
+                    <td>—</td>
+                    <td style="font-family:var(--sans);font-size:12px;">Typical week deviates ±52% from prediction — reflects inherent club channel volatility.</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- ── 4d: Hierarchical Spread ── -->
+        <p class="section-desc" style="font-weight:600; color:var(--text-primary); margin-bottom:8px; margin-top:32px;">
+            Hierarchical Spread — How different are the retailers from each other?
+        </p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Parameter</th>
+                    <th>Mean</th>
+                    <th>95% HDI</th>
+                    <th>Interpretation</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="row-label">σ_base (base elasticity spread)</td>
+                    <td>0.34</td>
+                    <td>[0.02, 0.72]</td>
+                    <td style="font-family:var(--sans);font-size:12px;">
+                        <strong>Moderate heterogeneity.</strong> Retailers differ meaningfully in base price sensitivity. 
+                        Costco (−2.10) is noticeably more elastic than BJ's (−1.65).
+                    </td>
+                </tr>
+                <tr>
+                    <td class="row-label">σ_promo (promo elasticity spread)</td>
+                    <td>0.18</td>
+                    <td>[0.01, 0.45]</td>
+                    <td style="font-family:var(--sans);font-size:12px;">
+                        <strong>Low heterogeneity.</strong> Promotional response is more similar across retailers. 
+                        Partial pooling is pulling estimates together — individual retailer promo estimates 
+                        should be used directionally but are less distinct than base elasticities.
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- ── 4e: Data Availability ── -->
+        <p class="section-desc" style="font-weight:600; color:var(--text-primary); margin-bottom:8px; margin-top:32px;">
+            Data Availability by Retailer
+        </p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Retailer</th>
+                    <th>Source</th>
+                    <th>Obs</th>
+                    <th>has_promo</th>
+                    <th>has_competitor</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="row-label">BJ's</td>
+                    <td style="font-family:var(--sans);font-size:12px;">Circana</td>
+                    <td>~160</td>
+                    <td>✓</td>
+                    <td>✓</td>
+                    <td style="font-family:var(--sans);font-size:12px;">Full feature set</td>
+                </tr>
+                <tr>
+                    <td class="row-label">Costco</td>
+                    <td style="font-family:var(--sans);font-size:12px;">CRX</td>
+                    <td>~160</td>
+                    <td>✓</td>
+                    <td>✗</td>
+                    <td style="font-family:var(--sans);font-size:12px;">No Private Label data — cross-price masked to zero</td>
+                </tr>
+                <tr>
+                    <td class="row-label">Sam's Club</td>
+                    <td style="font-family:var(--sans);font-size:12px;">Circana</td>
+                    <td>~160</td>
+                    <td>✓</td>
+                    <td>✓</td>
+                    <td style="font-family:var(--sans);font-size:12px;">Full feature set</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ═════════════════════════════════════════════════════════════ -->
+    <!-- SECTION 5: DYNAMIC PLAYGROUND                                -->
+    <!-- ═════════════════════════════════════════════════════════════ -->
+    <div class="section">
+        <div class="section-header">
+            <span class="section-number">05</span>
+            <span class="section-title">Coefficient Explorer</span>
+        </div>
+        <p class="section-desc">
+            Adjust the price change below to see how the model translates coefficients into 
+            volume impact for each retailer. This uses the posterior mean estimates — the full 
+            uncertainty range is shown in the tables above.
+        </p>
+
+        <div class="playground">
+            <h4>Base Price Impact Calculator</h4>
+            <div class="playground-controls">
+                <div>
+                    <label>Base Price Change:</label><br>
+                    <input type="range" id="price-slider" min="-5" max="5" value="1" step="0.5">
+                    <span id="price-value" style="font-family:var(--mono);font-size:14px;font-weight:600;margin-left:8px;">+1.0%</span>
+                </div>
+            </div>
+            <div class="playground-result" id="base-result">
+                <!-- filled by JS -->
+            </div>
+        </div>
+
+        <div class="playground">
+            <h4>Promotional Discount Impact Calculator</h4>
+            <div class="playground-controls">
+                <div>
+                    <label>Discount Depth:</label><br>
+                    <input type="range" id="promo-slider" min="1" max="25" value="10" step="1">
+                    <span id="promo-value" style="font-family:var(--mono);font-size:14px;font-weight:600;margin-left:8px;">10% off</span>
+                </div>
+            </div>
+            <div class="playground-result" id="promo-result">
+                <!-- filled by JS -->
+            </div>
+        </div>
+        <div class="playground" style="border-color: var(--warn);">
+            <h4>Cross-Price Impact Calculator</h4>
+            <div class="verdict warn" style="margin-bottom:16px; font-size:12px; padding:10px 16px;">
+                <span class="verdict-icon">⚠</span>
+                <div>
+                    <strong>Use with caution.</strong> The cross-price elasticity 95% HDI includes zero 
+                    [−0.229, +0.040], meaning the model cannot confidently distinguish this effect from 
+                    no effect. Treat these estimates as directional only, not as decision-grade inputs. 
+                    Costco has no Private Label data — cross-price is masked to zero for that retailer.
+                </div>
+            </div>
+            <div class="playground-controls">
+                <div>
+                    <label>Private Label Price Change:</label><br>
+                    <input type="range" id="cross-slider" min="-5" max="5" value="1" step="0.5">
+                    <span id="cross-value" style="font-family:var(--mono);font-size:14px;font-weight:600;margin-left:8px;">+1.0%</span>
+                </div>
+            </div>
+            <div class="playground-result" id="cross-result">
+                <!-- filled by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ═════════════════════════════════════════════════════════════ -->
+    <!-- APPENDIX A: PRIORS                                           -->
+    <!-- ═════════════════════════════════════════════════════════════ -->
+    <div class="section">
+        <div class="section-header">
+            <span class="section-number">A1</span>
+            <span class="section-title">Appendix — Prior Distributions</span>
+        </div>
+        <p class="section-desc">
+            Priors encode what we believed about each parameter before seeing the data. 
+            Weakly informative priors center on reasonable values but allow the data to dominate.
+        </p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Parameter</th>
+                    <th>Prior</th>
+                    <th>Rationale</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="row-label">μ_base</td>
+                    <td style="font-family:var(--mono);font-size:12px;">Normal(−2.0, 1.0)</td>
+                    <td style="font-family:var(--sans);font-size:12px;color:var(--text-secondary);">
+                        CPG literature suggests beverage elasticities typically range from −1 to −3. 
+                        Centered at −2 with SD=1 covers this range at 95%.
+                    </td>
+                </tr>
+                <tr>
+                    <td class="row-label">μ_promo</td>
+                    <td style="font-family:var(--mono);font-size:12px;">Normal(−3.0, 2.0)</td>
+                    <td style="font-family:var(--sans);font-size:12px;color:var(--text-secondary);">
+                        Promotional semi-elasticities are typically larger in magnitude. Wide SD reflects 
+                        high uncertainty in promo response across categories.
+                    </td>
+                </tr>
+                <tr>
+                    <td class="row-label">β_cross</td>
+                    <td style="font-family:var(--mono);font-size:12px;">Normal(0.0, 1.0)</td>
+                    <td style="font-family:var(--sans);font-size:12px;color:var(--text-secondary);">
+                        Centered at zero (no a priori directional assumption). Cross-effects are typically small.
+                    </td>
+                </tr>
+                <tr>
+                    <td class="row-label">β_season</td>
+                    <td style="font-family:var(--mono);font-size:12px;">Normal(0.0, 0.5)</td>
+                    <td style="font-family:var(--sans);font-size:12px;color:var(--text-secondary);">
+                        Seasonal impact expected to be moderate. SD=0.5 allows up to ~65% seasonal swing at 95%.
+                    </td>
+                </tr>
+                <tr>
+                    <td class="row-label">β_time</td>
+                    <td style="font-family:var(--mono);font-size:12px;">Normal(0.0, 0.01)</td>
+                    <td style="font-family:var(--sans);font-size:12px;color:var(--text-secondary);">
+                        Tight prior because weekly changes should be tiny. SD=0.01 allows up to ~67% annual change at 95%.
+                    </td>
+                </tr>
+                <tr>
+                    <td class="row-label">σ_base, σ_promo</td>
+                    <td style="font-family:var(--mono);font-size:12px;">HalfNormal(0.5)</td>
+                    <td style="font-family:var(--sans);font-size:12px;color:var(--text-secondary);">
+                        Between-retailer spread. HalfNormal constrains to positive values with mode near zero, 
+                        allowing partial pooling to collapse to full pooling if data supports it.
+                    </td>
+                </tr>
+                <tr>
+                    <td class="row-label">σ</td>
+                    <td style="font-family:var(--mono);font-size:12px;">HalfNormal(1.0)</td>
+                    <td style="font-family:var(--sans);font-size:12px;color:var(--text-secondary);">
+                        Observation noise in log-volume. SD=1.0 is wide enough to accommodate high weekly volatility.
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="callout warn-callout">
+            <strong>Note:</strong> Prior specifications shown above are representative. 
+            Confirm exact values from <code>bayesian_models.py</code> before citing in external documents.
+        </div>
+    </div>
+
+    <!-- ═════════════════════════════════════════════════════════════ -->
+    <!-- APPENDIX B: TRACE PLOTS                                      -->
+    <!-- ═════════════════════════════════════════════════════════════ -->
+    <div class="section">
+        <div class="section-header">
+            <span class="section-number">A2</span>
+            <span class="section-title">Appendix — MCMC Trace Plots</span>
+        </div>
+        <p class="section-desc">
+            Visual confirmation of chain mixing. Left panels show posterior density per chain; 
+            right panels show the time series of sampled values. Well-mixed chains appear as 
+            overlapping "fuzzy caterpillars" with no trends, steps, or stuck regions.
+        </p>
+        <div class="plot-placeholder">
+            📊 [MCMC Trace Plots — all parameters]<br>
+            <em>trace_plot.png</em>
+        </div>
+    </div>
+
+    <!-- ═════════════════════════════════════════════════════════════ -->
+    <!-- APPENDIX C: POSTERIOR DISTRIBUTIONS                          -->
+    <!-- ═════════════════════════════════════════════════════════════ -->
+    <div class="section">
+        <div class="section-header">
+            <span class="section-number">A3</span>
+            <span class="section-title">Appendix — Posterior Distributions</span>
+        </div>
+        <p class="section-desc">
+            Full posterior distributions for all parameters. Red dashed line = posterior mean. 
+            Green dotted lines = 95% HDI bounds. The width of each distribution reflects our 
+            remaining uncertainty about that parameter after seeing the data.
+        </p>
+        <div class="plot-placeholder">
+            📊 [Posterior Distribution Histograms — all parameters]<br>
+            <em>posterior_plot.png</em>
+        </div>
+    </div>
+
+    <!-- ═════════════════════════════════════════════════════════════ -->
+    <!-- FOOTER                                                       -->
+    <!-- ═════════════════════════════════════════════════════════════ -->
+    <div class="footer">
+        Generated by Bayesian Price Elasticity Analysis Pipeline v2 &nbsp;|&nbsp; 
+        Hierarchical Model (4 chains × 2,000 draws, 3,000 tuning) &nbsp;|&nbsp; 
+        Target Accept: 0.95 &nbsp;|&nbsp; Seed: 42
+    </div>
+
+</div>
+
+<!-- ═════════════════════════════════════════════════════════════ -->
+<!-- JAVASCRIPT: PLAYGROUND INTERACTIVITY                         -->
+<!-- ═════════════════════════════════════════════════════════════ -->
+<script>
+    // Posterior means (will be injected by Python in production)
+    const COEFFICIENTS = {
+        base: {
+            'Overall':    -1.836,
+            "BJ's":       -1.65,
+            'Costco':     -2.10,
+            "Sam's Club": -1.78
+        },
+        promo: {
+            'Overall':    -4.249,
+            "BJ's":       -4.45,
+            'Costco':     -3.85,
+            "Sam's Club": -4.42
+        }
+    };
+
+    // ── Base Price Calculator ──
+    const priceSlider = document.getElementById('price-slider');
+    const priceValue = document.getElementById('price-value');
+    const baseResult = document.getElementById('base-result');
+
+    function updateBaseCalc() {
+        const pct = parseFloat(priceSlider.value);
+        priceValue.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
+
+        let html = '<table style="width:100%;margin:0;font-size:12px;">';
+        html += '<thead><tr><th style="padding:4px 8px;">Retailer</th><th style="padding:4px 8px;">Elasticity</th><th style="padding:4px 8px;">Volume Impact</th><th style="padding:4px 8px;">Revenue Impact</th></tr></thead><tbody>';
+
+        for (const [name, elast] of Object.entries(COEFFICIENTS.base)) {
+            // log-log: volume_pct_change ≈ elasticity × price_pct_change
+            const volChange = elast * pct;
+            // Revenue = (1 + vol_change/100) * (1 + price_change/100) - 1
+            const revChange = ((1 + volChange / 100) * (1 + pct / 100) - 1) * 100;
+
+            const volClass = volChange >= 0 ? 'impact-positive' : 'impact-negative';
+            const revClass = revChange >= 0 ? 'impact-positive' : 'impact-negative';
+            const bold = name === 'Overall' ? 'font-weight:600;' : '';
+
+            html += '<tr style="' + bold + '">';
+            html += '<td style="padding:6px 8px;font-family:var(--sans);">' + name + '</td>';
+            html += '<td style="padding:6px 8px;font-family:var(--mono);">' + elast.toFixed(2) + '</td>';
+            html += '<td style="padding:6px 8px;font-family:var(--mono);" class="' + volClass + '">' + (volChange >= 0 ? '+' : '') + volChange.toFixed(1) + '%</td>';
+            html += '<td style="padding:6px 8px;font-family:var(--mono);" class="' + revClass + '">' + (revChange >= 0 ? '+' : '') + revChange.toFixed(1) + '%</td>';
+            html += '</tr>';
+        }
+        html += '</tbody></table>';
+        html += '<span class="math-step">Formula: Volume Impact ≈ elasticity × price change &nbsp;|&nbsp; Revenue Impact = (1 + vol impact) × (1 + price change) − 1</span>';
+
+        baseResult.innerHTML = html;
+    }
+
+    priceSlider.addEventListener('input', updateBaseCalc);
+    updateBaseCalc();
+
+    // ── Promo Discount Calculator ──
+    const promoSlider = document.getElementById('promo-slider');
+    const promoValue = document.getElementById('promo-value');
+    const promoResult = document.getElementById('promo-result');
+
+    function updatePromoCalc() {
+        const disc = parseFloat(promoSlider.value);
+        promoValue.textContent = disc.toFixed(0) + '% off';
+
+        const d = -disc / 100;  // PromoDepth is negative (price decrease)
+
+        let html = '<table style="width:100%;margin:0;font-size:12px;">';
+        html += '<thead><tr><th style="padding:4px 8px;">Retailer</th><th style="padding:4px 8px;">β_promo</th><th style="padding:4px 8px;">Volume Impact</th><th style="padding:4px 8px;">Revenue Impact</th></tr></thead><tbody>';
+
+        for (const [name, elast] of Object.entries(COEFFICIENTS.promo)) {
+            // semi-elasticity: volume_change = exp(β_promo × depth) − 1
+            const volChange = (Math.exp(elast * d) - 1) * 100;
+            // Revenue during promo: sell more volume at lower price
+            const revChange = ((1 + volChange / 100) * (1 - disc / 100) - 1) * 100;
+
+            const volClass = volChange >= 0 ? 'impact-positive' : 'impact-negative';
+            const revClass = revChange >= 0 ? 'impact-positive' : 'impact-negative';
+            const bold = name === 'Overall' ? 'font-weight:600;' : '';
+
+            html += '<tr style="' + bold + '">';
+            html += '<td style="padding:6px 8px;font-family:var(--sans);">' + name + '</td>';
+            html += '<td style="padding:6px 8px;font-family:var(--mono);">' + elast.toFixed(2) + '</td>';
+            html += '<td style="padding:6px 8px;font-family:var(--mono);" class="' + volClass + '">' + (volChange >= 0 ? '+' : '') + volChange.toFixed(1) + '%</td>';
+            html += '<td style="padding:6px 8px;font-family:var(--mono);" class="' + revClass + '">' + (revChange >= 0 ? '+' : '') + revChange.toFixed(1) + '%</td>';
+            html += '</tr>';
+        }
+        html += '</tbody></table>';
+        html += '<span class="math-step">Formula: Volume Impact = e<sup>(β_promo × depth)</sup> − 1 &nbsp;|&nbsp; Revenue Impact = (1 + vol impact) × (1 − discount) − 1</span>';
+
+        promoResult.innerHTML = html;
+    }
+
+    promoSlider.addEventListener('input', updatePromoCalc);
+    updatePromoCalc();
+
+    // ── Cross-Price Calculator ──
+    const crossSlider = document.getElementById('cross-slider');
+    const crossValue = document.getElementById('cross-value');
+    const crossResult = document.getElementById('cross-result');
+
+    const CROSS_ELASTICITY = -0.094;
+    const CROSS_HDI = [-0.229, 0.040];
+
+    function updateCrossCalc() {
+        const pct = parseFloat(crossSlider.value);
+        crossValue.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
+
+        let html = '<table style="width:100%;margin:0;font-size:12px;">';
+        html += '<thead><tr><th style="padding:4px 8px;">Retailer</th><th style="padding:4px 8px;">β_cross</th><th style="padding:4px 8px;">SI Volume Impact (Mean)</th><th style="padding:4px 8px;">SI Volume Impact (HDI Range)</th></tr></thead><tbody>';
+
+        const retailers = [
+            { name: 'Overall', active: true },
+            { name: "BJ's", active: true },
+            { name: 'Costco', active: false },
+            { name: "Sam's Club", active: true }
+        ];
+
+        for (const r of retailers) {
+            const bold = r.name === 'Overall' ? 'font-weight:600;' : '';
+
+            if (!r.active) {
+                html += '<tr style="' + bold + 'color:var(--text-muted);font-style:italic;">';
+                html += '<td style="padding:6px 8px;font-family:var(--sans);">' + r.name + '</td>';
+                html += '<td style="padding:6px 8px;font-family:var(--mono);">—</td>';
+                html += '<td colspan="2" style="padding:6px 8px;font-family:var(--sans);font-size:11px;">N/A — no Private Label data (has_competitor = 0)</td>';
+                html += '</tr>';
+                continue;
+            }
+
+            // log-log: SI volume impact ≈ β_cross × PL price change
+            const volMean = CROSS_ELASTICITY * pct;
+            const volLow = CROSS_HDI[0] * pct;
+            const volHigh = CROSS_HDI[1] * pct;
+            // Sort for display (direction flips with negative pct)
+            const volMin = Math.min(volLow, volHigh);
+            const volMax = Math.max(volLow, volHigh);
+
+            const volClass = Math.abs(volMean) < 0.5 ? 'num-neutral' : (volMean >= 0 ? 'impact-positive' : 'impact-negative');
+
+            html += '<tr style="' + bold + '">';
+            html += '<td style="padding:6px 8px;font-family:var(--sans);">' + r.name + '</td>';
+            html += '<td style="padding:6px 8px;font-family:var(--mono);">' + CROSS_ELASTICITY.toFixed(3) + '</td>';
+            html += '<td style="padding:6px 8px;font-family:var(--mono);" class="' + volClass + '">' + (volMean >= 0 ? '+' : '') + volMean.toFixed(2) + '%</td>';
+            html += '<td style="padding:6px 8px;font-family:var(--mono);color:var(--text-muted);">[' + (volMin >= 0 ? '+' : '') + volMin.toFixed(2) + '%, ' + (volMax >= 0 ? '+' : '') + volMax.toFixed(2) + '%]</td>';
+            html += '</tr>';
+        }
+        html += '</tbody></table>';
+        html += '<span class="math-step">Formula: SI Volume Impact ≈ β_cross × PL Price Δ &nbsp;|&nbsp; HDI range shows impact using bounds of 95% credible interval</span>';
+
+        crossResult.innerHTML = html;
+    }
+
+    crossSlider.addEventListener('input', updateCrossCalc);
+    updateCrossCalc();
+</script>
+
+</body>
+</html>

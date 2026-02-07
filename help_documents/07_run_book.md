@@ -164,6 +164,30 @@ python examples/example_06_smoke_beta_time_costco.py  # Costco + time trend + HT
 
 > Examples 01–05 may need minor touch-ups after recent pipeline changes. Example 06 is the most current.
 
+### Option E: VM Smoke Test (NO MCMC) — Validate the new two-report HTML generation
+
+Once you are connected to the Azure VM, this is the fastest way to validate that the **latest report overhaul**
+is working correctly **without running any sampling**.
+
+**Prerequisites:**
+- You have an existing output folder containing:
+  - `trace.nc`
+  - `prepared_data.csv`
+
+For example, the repo may already contain `./results_v4_tune3000/` from prior runs.
+
+```bash
+source ./venv312/bin/activate
+python examples/example_07_vm_smoke_generate_reports_from_artifacts.py \
+  --results-dir ./results_v4_tune3000
+```
+
+**Expected result:**
+- The script writes/overwrites:
+  - `statistical_validation_report.html`
+  - `business_decision_brief.html`
+  inside the specified results directory.
+
 ---
 
 ## Expected Outputs
@@ -178,7 +202,8 @@ After a successful run, your output directory should contain:
 | `results_summary.csv` | Key elasticities + credible intervals |
 | `trace.nc` | Full posterior samples (ArviZ netCDF) |
 | `plots/` | Diagnostic PNGs (trace, posteriors, scenarios) |
-| `elasticity_report.html` | Self-contained HTML report for stakeholders |
+| `statistical_validation_report.html` | Self-contained **statistical validation** report (DS audience) |
+| `business_decision_brief.html` | Self-contained **business brief** (leadership audience) |
 
 ```bash
 ls -lh ./results

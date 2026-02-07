@@ -176,14 +176,15 @@ The system will automatically handle this using:
 
     out_dir = REPO_ROOT / "output_example_04"
     out_dir.mkdir(parents=True, exist_ok=True)
-    report_path = generate_html_report(
+    report_paths = generate_html_report(
         results=results,
         data=df,
         output_dir=str(out_dir),
-        report_name="costco_missing_promo_report.html",
     )
 
-    print(f"\n✓ Report generated: {report_path}")
+    print(f"\n✓ Reports generated:")
+    for k, v in report_paths.items():
+        print(f"  - {k}: {v}")
     print("\n" + "=" * 80)
     print("✓ EXAMPLE 4 COMPLETE")
     print("=" * 80)

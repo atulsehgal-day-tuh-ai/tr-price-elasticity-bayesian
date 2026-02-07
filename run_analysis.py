@@ -27,7 +27,7 @@ from datetime import datetime
 # Import our modules
 from data_prep import ElasticityDataPrep, PrepConfig
 from bayesian_models import SimpleBayesianModel, HierarchicalBayesianModel
-from visualizations import generate_html_report
+from visualizations import generate_statistical_report, generate_business_report
 
 
 # ============================================================================
@@ -473,22 +473,34 @@ def run_pipeline(config: dict, logger):
         logger.info(f"\n✓ All plots saved to: {plots_dir}")
     
     # ========================================================================
-    # STEP 5: GENERATE HTML REPORT
+    # STEP 5: GENERATE HTML REPORTS (contract-driven)
     # ========================================================================
-    
-    if config['output']['generate_html']:
+
+    output_cfg = config.get('output', {}) if isinstance(config, dict) else {}
+    legacy_generate_html = bool(output_cfg.get('generate_html', True))
+    generate_stat = bool(output_cfg.get('generate_statistical_report', legacy_generate_html))
+    generate_biz = bool(output_cfg.get('generate_business_report', legacy_generate_html))
+
+    if generate_stat or generate_biz:
         logger.info("\n" + "="*80)
-        logger.info("STEP 5: GENERATING HTML REPORT")
+        logger.info("STEP 5: GENERATING HTML REPORTS")
         logger.info("="*80)
-        
-        report_path = generate_html_report(
-            results=results,
-            data=data,
-            output_dir=str(output_dir),
-            report_name='elasticity_report.html'
-        )
-        
-        logger.info(f"\n✓ HTML report generated: {report_path}")
+
+        if generate_stat:
+            stat_path = generate_statistical_report(
+                results=results,
+                data=data,
+                output_dir=str(output_dir),
+            )
+            logger.info(f"\n✓ Statistical Validation Report generated: {stat_path}")
+
+        if generate_biz:
+            biz_path = generate_business_report(
+                results=results,
+                data=data,
+                output_dir=str(output_dir),
+            )
+            logger.info(f"\n✓ Business Decision Brief generated: {biz_path}")
     
     # ========================================================================
     # FINAL SUMMARY
@@ -519,12 +531,17 @@ def run_pipeline(config: dict, logger):
     logger.info(f"  - results_summary.csv")
     if config['output']['generate_plots']:
         logger.info(f"  - plots/ (all diagnostic plots)")
-    if config['output']['generate_html']:
-        logger.info(f"  - elasticity_report.html")
+    if generate_stat:
+        logger.info(f"  - statistical_validation_report.html")
+    if generate_biz:
+        logger.info(f"  - business_decision_brief.html")
     logger.info(f"  - analysis.log")
     
     logger.info(f"\n💡 NEXT STEPS:")
-    logger.info(f"  1. Review HTML report: {output_dir}/elasticity_report.html")
+    if generate_stat:
+        logger.info(f"  1. Review statistical report: {output_dir}/statistical_validation_report.html")
+    if generate_biz:
+        logger.info(f"  2. Review business brief: {output_dir}/business_decision_brief.html")
     logger.info(f"  2. Check convergence in model_summary.txt")
     logger.info(f"  3. Use results_summary.csv for further analysis")
     

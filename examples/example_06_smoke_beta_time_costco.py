@@ -180,16 +180,18 @@ def main() -> None:
     out_dir = REPO_ROOT / "output_example_06"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    report_path = generate_html_report(
+    report_paths = generate_html_report(
         results=results,
         data=df,
         output_dir=str(out_dir),
         report_name="smoke_beta_time_costco_report.html",
     )
 
-    report_file = Path(report_path)
-    if not report_file.exists():
-        raise FileNotFoundError(f"Expected HTML report to be written, but it does not exist: {report_file}")
+    # Both reports must be written
+    for k, p in report_paths.items():
+        report_file = Path(p)
+        if not report_file.exists():
+            raise FileNotFoundError(f"Expected report to be written ({k}), but it does not exist: {report_file}")
 
     time_trend_plot = out_dir / "time_trend_plot.png"
     if not time_trend_plot.exists():
@@ -200,7 +202,7 @@ def main() -> None:
     print("\n" + "=" * 80)
     print("✓ EXAMPLE 06 COMPLETE")
     print("=" * 80)
-    print(f"✓ HTML report: {report_file}")
+    print(f"✓ Reports: {report_paths}")
     print(f"✓ Time trend plot: {time_trend_plot}")
 
 

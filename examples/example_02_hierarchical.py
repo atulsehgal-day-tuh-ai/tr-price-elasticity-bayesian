@@ -254,18 +254,16 @@ Example:
     print("GENERATING REPORTS")
     print("="*80)
 
-    # Generate complete HTML report
-    # This will include group comparison plots
-    report_path = generate_html_report(
+    # Generate contract-driven reports
+    report_paths = generate_html_report(
         results=results,
         data=df,
         output_dir='./output_example_02',
-        report_name='hierarchical_model_report.html'
     )
 
-    print(f"\n✓ Complete HTML report generated!")
-    print(f"  Location: {report_path}")
-    print(f"  Includes group comparison plots")
+    print(f"\n✓ Reports generated!")
+    for k, v in report_paths.items():
+        print(f"  - {k}: {v}")
 
     # ============================================================================
     # STEP 9: KEY TAKEAWAYS

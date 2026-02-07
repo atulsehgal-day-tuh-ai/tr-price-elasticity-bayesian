@@ -169,17 +169,15 @@ def main():
     print("GENERATING REPORTS")
     print("="*80)
 
-    # Generate complete HTML report with all visualizations
-    report_path = generate_html_report(
+    report_paths = generate_html_report(
         results=results,
         data=df,
         output_dir='./output_example_01',
-        report_name='simple_model_report.html'
     )
 
-    print(f"\n✓ Complete HTML report generated!")
-    print(f"  Location: {report_path}")
-    print(f"  Open in browser to view all plots and results")
+    print(f"\n✓ Reports generated:")
+    for k, v in report_paths.items():
+        print(f"  - {k}: {v}")
 
     # ============================================================================
     # STEP 7: KEY TAKEAWAYS

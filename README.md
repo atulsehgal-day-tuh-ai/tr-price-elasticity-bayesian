@@ -122,7 +122,7 @@ will fail with a parser error. Use `Set-Content` / a here-string in PowerShell, 
 ```python
 from data_prep import ElasticityDataPrep
 from bayesian_models import HierarchicalBayesianModel
-from visualizations import generate_html_report
+from visualizations import generate_statistical_report, generate_business_report
 
 # 1. Prepare data
 prep = ElasticityDataPrep()
@@ -132,8 +132,9 @@ df = prep.transform('bjs.csv', 'sams.csv')
 model = HierarchicalBayesianModel()
 results = model.fit(df)
 
-# 3. Generate report
-generate_html_report(results, output_dir='./output')
+# 3. Generate reports (contract-driven)
+generate_statistical_report(results, df, output_dir='./output')
+generate_business_report(results, df, output_dir='./output')
 ```
 
 ### Input data requirement (V2)

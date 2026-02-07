@@ -116,14 +116,15 @@ def main():
     # ------------------------------------------------------------------------
     # STEP 5: REPORT
     # ------------------------------------------------------------------------
-    report_path = generate_html_report(
+    report_paths = generate_html_report(
         results=results,
         data=df,
         output_dir="./output_example_05",
-        report_name="dual_elasticity_report.html",
     )
 
-    print(f"\n✓ HTML report generated: {report_path}")
+    print(f"\n✓ Reports generated:")
+    for k, v in report_paths.items():
+        print(f"  - {k}: {v}")
 
 
 if __name__ == "__main__":

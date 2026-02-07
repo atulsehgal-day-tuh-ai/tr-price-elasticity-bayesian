@@ -10,9 +10,10 @@ Complete visualization suite including:
 - HTML report generation
 
 Usage:
-    from visualizations import generate_html_report
+    from visualizations import generate_statistical_report, generate_business_report
     
-    generate_html_report(results, output_dir='./output')
+    generate_statistical_report(results, data, output_dir='./output')
+    generate_business_report(results, data, output_dir='./output')
 """
 
 import numpy as np
@@ -23,6 +24,10 @@ from pathlib import Path
 from typing import Optional, List, Dict
 import arviz as az
 from datetime import datetime
+
+# NOTE: Contract-driven report generators live in `reporting/`.
+# We import them lazily inside wrapper functions to avoid circular imports,
+# because the reporting pipeline reuses plotting helpers from this module.
 
 # Set style
 sns.set_style("whitegrid")
@@ -740,13 +745,10 @@ def generate_html_report(
     report_name: str = 'elasticity_report.html'
 ):
     """
-    Generate complete HTML report with all visualizations
+    Legacy entry point (kept for backwards compatibility):
+    Generates the two contract-driven reports and returns their paths.
     
-    Creates:
-    - Executive summary
-    - All diagnostic plots
-    - Interactive tables
-    - Embedded visualizations
+    Note: This no longer writes `elasticity_report.html`.
     
     Parameters:
     ----------
@@ -760,89 +762,39 @@ def generate_html_report(
         Output directory
     
     report_name : str
-        HTML report filename
+        Ignored (kept to avoid breaking callers).
     """
-    
-    # Create output directory
+
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    
-    print(f"\nGenerating HTML report in {output_dir}...")
-    
-    # Generate all plots
-    print("  Creating trace plot...")
-    trace_path = output_dir / 'trace_plot.png'
-    plot_trace(results, output_path=str(trace_path))
-    plt.close()
-    
-    print("  Creating posterior plots...")
-    posterior_path = output_dir / 'posterior_plot.png'
-    plot_posteriors(results, output_path=str(posterior_path))
-    plt.close()
-    
-    print("  Creating seasonal plot...")
-    seasonal_path = output_dir / 'seasonal_plot.png'
-    plot_seasonal_patterns(results, data, output_path=str(seasonal_path))
-    plt.close()
 
-    # Time trend plot
-    time_trend_path = None
-    if getattr(results, 'beta_time_trend', None) is not None:
-        print("  Creating time trend plot...")
-        time_trend_path = output_dir / 'time_trend_plot.png'
-        plot_time_trend(results, data, output_path=str(time_trend_path))
-        plt.close()
-    
-    # V2: base vs promo comparison + separate scenario plots
-    base_vs_promo_path = None
-    if getattr(results, 'promo_elasticity', None) is not None:
-        print("  Creating base vs promo comparison plot...")
-        base_vs_promo_path = output_dir / 'base_vs_promo_comparison.png'
-        plot_base_vs_promo_comparison(results, output_path=str(base_vs_promo_path))
-        plt.close()
+    stat_path = generate_statistical_report(results=results, data=data, output_dir=str(output_dir))
+    biz_path = generate_business_report(results=results, data=data, output_dir=str(output_dir))
 
-    print("  Creating base price revenue scenarios plot...")
-    revenue_base_path = output_dir / 'revenue_scenarios_base.png'
-    plot_revenue_scenarios_base(results, output_path=str(revenue_base_path))
-    plt.close()
+    return {
+        "statistical_validation_report": stat_path,
+        "business_decision_brief": biz_path,
+    }
 
-    revenue_promo_path = None
-    if getattr(results, 'promo_elasticity', None) is not None:
-        print("  Creating promotional revenue scenarios plot...")
-        revenue_promo_path = output_dir / 'revenue_scenarios_promo.png'
-        plot_revenue_scenarios_promo(results, output_path=str(revenue_promo_path))
-        plt.close()
-    
-    # Group comparison (if hierarchical)
-    group_path = None
-    if hasattr(results, 'group_elasticities'):
-        print("  Creating group comparison plot...")
-        group_path = output_dir / 'group_comparison.png'
-        plot_group_comparison(results, output_path=str(group_path))
-        plt.close()
-    
-    # Generate HTML
-    print("  Generating HTML...")
-    html_content = _create_html_content(
-        results=results,
-        data=data,
-        output_dir=output_dir,
-        group_path=group_path,
-        base_vs_promo_path=base_vs_promo_path,
-        revenue_base_path=revenue_base_path,
-        revenue_promo_path=revenue_promo_path,
-        time_trend_path=time_trend_path,
-    )
-    
-    # Write HTML file
-    report_path = output_dir / report_name
-    with open(report_path, 'w') as f:
-        f.write(html_content)
-    
-    print(f"\n✓ HTML report generated: {report_path}")
-    print(f"  Open in browser to view complete report")
-    
-    return str(report_path)
+
+def generate_statistical_report(results, data, output_dir: str = "./output", *, template_path: Optional[str] = None) -> str:
+    """
+    Contract entry point: Statistical Validation Report.
+    Wrapper around `reporting.generate_statistical_report` (lazy import).
+    """
+    from reporting import generate_statistical_report as _gen
+
+    return _gen(results=results, data=data, output_dir=output_dir, template_path=template_path)
+
+
+def generate_business_report(results, data, output_dir: str = "./output", *, template_path: Optional[str] = None) -> str:
+    """
+    Contract entry point: Business Decision Brief.
+    Wrapper around `reporting.generate_business_report` (lazy import).
+    """
+    from reporting import generate_business_report as _gen
+
+    return _gen(results=results, data=data, output_dir=output_dir, template_path=template_path)
 
 
 def _create_html_content(results, data, output_dir, group_path, base_vs_promo_path, revenue_base_path, revenue_promo_path, time_trend_path=None):
