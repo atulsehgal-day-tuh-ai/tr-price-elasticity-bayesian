@@ -126,9 +126,48 @@ def main() -> None:
     stat_path = generate_statistical_report(results=results, data=df, output_dir=str(results_dir))
     biz_path = generate_business_report(results=results, data=df, output_dir=str(results_dir))
 
+    # ---------------------------------------------------------------------
+    # Contract-driven smoke assertions (NO MCMC)
+    # ---------------------------------------------------------------------
+    stat_file = Path(stat_path)
+    biz_file = Path(biz_path)
+    assert stat_file.exists(), f"Expected statistical report to exist: {stat_file}"
+    assert biz_file.exists(), f"Expected business report to exist: {biz_file}"
+
+    stat_html = stat_file.read_text(encoding="utf-8")
+    biz_html = biz_file.read_text(encoding="utf-8")
+
+    # Shared requirement: embedded REPORT JSON payload
+    assert 'id="report-data"' in stat_html, "Stat report missing embedded REPORT JSON script tag."
+    assert 'id="report-data"' in biz_html, "Biz report missing embedded REPORT JSON script tag."
+
+    # Business v3: season-aware simulator + erosion panel exist (template contract markers)
+    assert "const SEASON" in biz_html, "Biz report missing injected SEASON constants block."
+    assert "Net Impact After Demand Erosion" in biz_html, "Biz report missing erosion projection panel (v3)."
+
+    # Business v3: CROSS is promoted to shared block; no hardcoded local crossMean/crossCI vars.
+    assert "const CROSS" in biz_html, "Biz report missing injected CROSS constants block."
+    assert "const crossMean" not in biz_html, "Biz report still has local hardcoded crossMean (should use CROSS.*)."
+    assert "const crossCILow" not in biz_html, "Biz report still has local hardcoded crossCILow (should use CROSS.*)."
+    assert "const crossCIHigh" not in biz_html, "Biz report still has local hardcoded crossCIHigh (should use CROSS.*)."
+
+    # Business v3: findings tbody must start empty (JS appends rows at runtime).
+    tb_start = biz_html.find('<tbody id="findings-body">')
+    assert tb_start != -1, 'Biz report missing `<tbody id="findings-body">`.'
+    tb_end = biz_html.find("</tbody>", tb_start)
+    assert tb_end != -1, "Biz report findings tbody is not properly closed."
+    tb_inner = biz_html[tb_start:tb_end]
+    assert "<tr" not in tb_inner.lower(), "Biz report findings tbody is not empty; risk of duplicate findings."
+
+    # Statistical v3: calculators must be driven by injected constants (not mock hardcodes)
+    assert "const SEASON_BETA" in stat_html, "Stat report missing injected SEASON_BETA."
+    assert "const BETA_TIME" in stat_html, "Stat report missing injected BETA_TIME."
+    assert "const CROSS_HDI" in stat_html, "Stat report missing injected CROSS_HDI."
+
     print("\n✓ Reports generated (no MCMC):")
     print(f"  - Statistical Validation Report: {stat_path}")
     print(f"  - Business Decision Brief:       {biz_path}")
+    print("\n✓ Smoke assertions passed (no MCMC).")
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Optional, List
 
+import re
 import numpy as np
 import pandas as pd
 
@@ -498,18 +499,26 @@ def _build_trend_alert(payload: Dict[str, Any]) -> str:
     mean = float(bt.get("annual_pct_mean", 0.0))
     lo = float(bt.get("annual_pct_ci_lower", 0.0))
     hi = float(bt.get("annual_pct_ci_upper", 0.0))
-    # 3-year cumulative using mean
-    cum3 = ((1 + mean / 100.0) ** 3 - 1) * 100.0
+    # 3-year cumulative range from annual CI bounds (contract v3)
+    def cum3(pct: float) -> float:
+        return ((1 + pct / 100.0) ** 3 - 1) * 100.0
+
+    cum3_mean = cum3(mean)
+    cum3_lo = cum3(lo)
+    cum3_hi = cum3(hi)
+    cum3_min = min(cum3_lo, cum3_hi)
+    cum3_max = max(cum3_lo, cum3_hi)
     icon = "🚨"
     cls = "alert-red" if mean < 0 else "alert"
     return (
-        f'<div class="alert alert-red">'
+        f'<div class="alert {cls}">'
         f'<div class="alert-icon">{icon}</div>'
         f'<div class="alert-text">Organic demand is {"declining" if mean<0 else "growing"} '
         f'<strong>{fmt_pct1(mean)}</strong> annually (95% range: {fmt_pct1(lo)} to {fmt_pct1(hi)}), '
         f'after controlling for price, promotions, and seasonality. This is a shared estimate '
         f'across all retailers. Over 3 years, the cumulative baseline shift is approximately '
-        f'<strong>{fmt_pct1(cum3)}</strong>.</div></div>'
+        f'<strong>{fmt_pct1(cum3_min)} to {fmt_pct1(cum3_max)}</strong> '
+        f'(mean: {fmt_pct1(cum3_mean)}).</div></div>'
     )
 
 
@@ -529,7 +538,7 @@ def generate_business_report(
     out.mkdir(parents=True, exist_ok=True)
 
     if template_path is None:
-        template_path = str(Path("mock_references") / "business_report_v2.html")
+        template_path = str(Path("mock_references") / "business_report_v3.html")
     template_file = Path(template_path)
 
     # Business template is designed to be image-light. Still embed plots if present in output_dir.
@@ -556,23 +565,86 @@ def generate_business_report(
     if 'id="report-data"' not in tpl:
         tpl = tpl.replace(marker, report_json_tag + marker, 1)
 
-    # Replace the hardcoded R object in the simulator with injected coefficients.
-    # Best-effort: keep existing simulator logic and just replace the constants.
-    if "const R = {" in tpl:
-        head, rest = tpl.split("const R = {", 1)
-        # find end of object literal (first occurrence of "};" after)
-        if "};" in rest:
-            after = rest.split("};", 1)[1]
-            injected = (
-                "const REPORT = JSON.parse(document.getElementById('report-data').textContent);\n"
-                "const R = {\n"
-                "  'Overall':    { base: REPORT.coefficients.base['Overall'], promo: (REPORT.coefficients.promo||{})['Overall'] },\n"
-                "  \"BJ's\":       { base: REPORT.coefficients.base[\"BJ's\"], promo: (REPORT.coefficients.promo||{})[\"BJ's\"] },\n"
-                "  'Costco':     { base: REPORT.coefficients.base['Costco'], promo: (REPORT.coefficients.promo||{})['Costco'] },\n"
-                "  \"Sam's Club\": { base: REPORT.coefficients.base[\"Sam's Club\"], promo: (REPORT.coefficients.promo||{})[\"Sam's Club\"] }\n"
-                "};\n"
-            )
-            tpl = head + injected + after
+    # ---------------------------------------------------------------------
+    # v3: Inject JS constants block from REPORT payload (contract §5)
+    # ---------------------------------------------------------------------
+    # Replace the entire constants prelude (R/ORDER + SEASON + BETA_TIME + CROSS)
+    # while keeping the rest of the simulator logic intact.
+    constants_start = tpl.find("// ── Retailer elasticities")
+    if constants_start == -1:
+        constants_start = tpl.find("const R = {")
+    constants_end = tpl.find("// ── DOM refs ──", constants_start) if constants_start != -1 else -1
+    if constants_start != -1 and constants_end != -1:
+        injected_constants = (
+            "// ── Retailer elasticities (from posterior means) ──\n"
+            "const REPORT = JSON.parse(document.getElementById('report-data').textContent);\n"
+            "const R = {\n"
+            "  'Overall':    { base: REPORT.coefficients.base['Overall'], promo: (REPORT.coefficients.promo||{})['Overall'] },\n"
+            "  \"BJ's\":       { base: REPORT.coefficients.base[\"BJ's\"], promo: (REPORT.coefficients.promo||{})[\"BJ's\"] },\n"
+            "  'Costco':     { base: REPORT.coefficients.base['Costco'], promo: (REPORT.coefficients.promo||{})['Costco'] },\n"
+            "  \"Sam's Club\": { base: REPORT.coefficients.base[\"Sam's Club\"], promo: (REPORT.coefficients.promo||{})[\"Sam's Club\"] }\n"
+            "};\n"
+            "const ORDER = ['Overall', \"BJ's\", \"Costco\", \"Sam's Club\"];\n"
+            "\n"
+            "// ── Seasonal coefficients (from model β_season) ──\n"
+            "// These are SHARED across retailers (not hierarchical)\n"
+            "function _sb(name) { return (REPORT.seasonal && REPORT.seasonal[name] && REPORT.seasonal[name].mean !== undefined) ? Number(REPORT.seasonal[name].mean) : 0.0; }\n"
+            "const SEASON = {\n"
+            "  winter: { beta: 0.0000, multiplier: 1.000, maxWeeks: 13, label: 'Winter' },\n"
+            "  spring: { beta: _sb('Spring'), multiplier: Math.exp(_sb('Spring')), maxWeeks: 13, label: 'Spring' },\n"
+            "  summer: { beta: _sb('Summer'), multiplier: Math.exp(_sb('Summer')), maxWeeks: 13, label: 'Summer' },\n"
+            "  fall:   { beta: _sb('Fall'),   multiplier: Math.exp(_sb('Fall')),   maxWeeks: 13, label: 'Fall' }\n"
+            "};\n"
+            "\n"
+            "// ── Demand erosion (from model β_time) ──\n"
+            "const BETA_TIME = (REPORT.beta_time && REPORT.beta_time.mean !== undefined) ? Number(REPORT.beta_time.mean) : 0.0;\n"
+            "const ANNUAL_EROSION_PCT = (Math.exp(BETA_TIME * 52) - 1) * 100;\n"
+            "\n"
+            "// ── Cross-price (shared JS block; used by findings + calculators) ──\n"
+            "const CROSS = {\n"
+            "  mean:  (REPORT.summaries && REPORT.summaries.cross && REPORT.summaries.cross.Overall) ? Number(REPORT.summaries.cross.Overall.mean) : 0.0,\n"
+            "  ciLow: (REPORT.summaries && REPORT.summaries.cross && REPORT.summaries.cross.Overall) ? Number(REPORT.summaries.cross.Overall.ci_lower) : 0.0,\n"
+            "  ciHigh:(REPORT.summaries && REPORT.summaries.cross && REPORT.summaries.cross.Overall) ? Number(REPORT.summaries.cross.Overall.ci_upper) : 0.0\n"
+            "};\n"
+            "\n"
+            "// ── Update season labels in simulator UI (avoid stale hardcoded % in template) ──\n"
+            "function _setSeasonPct(id, beta) {\n"
+            "  const el = document.getElementById(id);\n"
+            "  if (!el) return;\n"
+            "  const pct = (Math.exp(Number(beta)) - 1) * 100;\n"
+            "  el.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';\n"
+            "}\n"
+            "_setSeasonPct('sim-season-spring-mult', SEASON.spring.beta);\n"
+            "_setSeasonPct('sim-season-summer-mult', SEASON.summer.beta);\n"
+            "_setSeasonPct('sim-season-fall-mult',   SEASON.fall.beta);\n"
+            "\n"
+        )
+        tpl = tpl[:constants_start] + injected_constants + tpl[constants_end:]
+
+    # v3 contract §1.7.6: promote cross-price constants to shared JS block.
+    # Remove local constants and update references to CROSS.* inside the findings JS.
+    if "const crossMean" in tpl or "crossCILow" in tpl or "crossCIHigh" in tpl:
+        tpl = re.sub(r"^[ \t]*const[ \t]+crossMean[ \t]*=.*?;[ \t]*\r?\n", "", tpl, flags=re.MULTILINE)
+        tpl = re.sub(r"^[ \t]*const[ \t]+crossCILow[ \t]*=.*?;[ \t]*\r?\n", "", tpl, flags=re.MULTILINE)
+        tpl = re.sub(r"^[ \t]*const[ \t]+crossCIHigh[ \t]*=.*?;[ \t]*\r?\n", "", tpl, flags=re.MULTILINE)
+        tpl = re.sub(r"\bcrossMean\b", "CROSS.mean", tpl)
+        tpl = re.sub(r"\bcrossCILow\b", "CROSS.ciLow", tpl)
+        tpl = re.sub(r"\bcrossCIHigh\b", "CROSS.ciHigh", tpl)
+
+    # Add IDs to the simulator season multiplier spans so the injected JS can update them.
+    # (Template values are placeholders; production code must be dynamic.)
+    tpl = tpl.replace(
+        'Spring <span style="font-family:var(--mono);font-size:9px;color:var(--green);">+9.4%</span>',
+        'Spring <span id="sim-season-spring-mult" style="font-family:var(--mono);font-size:9px;color:var(--green);">+9.4%</span>',
+    )
+    tpl = tpl.replace(
+        'Summer <span style="font-family:var(--mono);font-size:9px;color:var(--amber);">+21.8%</span>',
+        'Summer <span id="sim-season-summer-mult" style="font-family:var(--mono);font-size:9px;color:var(--amber);">+21.8%</span>',
+    )
+    tpl = tpl.replace(
+        'Fall <span style="font-family:var(--mono);font-size:9px;color:var(--purple);">+2.2%</span>',
+        'Fall <span id="sim-season-fall-mult" style="font-family:var(--mono);font-size:9px;color:var(--purple);">+2.2%</span>',
+    )
 
     # Replace headline cards section (between the first cards-section div and the divider after it).
     cards_html = _build_headline_cards(payload)
@@ -727,28 +799,8 @@ def generate_business_report(
             post2 = a + "<tbody>" + new_body + "</tbody>" + c
             tpl = pre + "<th>Price Move (%)</th>" + post2
 
-    # Key findings table: replace rows similarly by matching the Key Findings table header.
-    findings = _compute_business_findings(payload)
-    if "<div class=\"section-title\">Key Findings</div>" in tpl:
-        # Replace the first <tbody> after that title with our generated rows.
-        pre, post = tpl.split("<div class=\"section-title\">Key Findings</div>", 1)
-        if "<tbody>" in post and "</tbody>" in post:
-            a, b = post.split("<tbody>", 1)
-            body, c = b.split("</tbody>", 1)
-            rows = []
-            for i, f in enumerate(findings, start=1):
-                p = float(f.get("p", "0.6"))
-                rows.append(
-                    "<tr>"
-                    f'<td style="font-family:var(--sans);font-weight:600;color:var(--blue);">{i}</td>'
-                    f'<td class="td-label">{f.get("finding","")}</td>'
-                    f'<td>{f.get("applies","")}</td>'
-                    f"<td>{pill_html(p)}</td>"
-                    "</tr>"
-                )
-            new_body = "\n" + ("\n".join(rows) if rows else "") + "\n"
-            post2 = a + "<tbody>" + new_body + "</tbody>" + c
-            tpl = pre + "<div class=\"section-title\">Key Findings</div>" + post2
+    # v3: Key Findings are generated in client-side JS from injected constants.
+    # Do NOT inject rows from Python; keep <tbody id="findings-body"> empty to avoid duplicates.
 
     # Footer: update the generation timestamp (best-effort).
     footer_marker = "<div class=\"footer\">"

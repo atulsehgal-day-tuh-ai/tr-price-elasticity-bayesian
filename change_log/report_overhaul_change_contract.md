@@ -143,10 +143,10 @@ Examples now treat report generation as returning a dict of two report paths (in
 ## 8) Template sources used
 
 Reports are generated from these mock templates (as sources):
-- `mock_references/statistical_report_v2.html`
-- `mock_references/business_report_v2.html`
+- `mock_references/statistical_report_v3.html`
+- `mock_references/business_report_v3.html`
 
-No duplicate copies of templates were created. The generator injects JSON + replaces specific sections/tables programmatically.
+The generator injects JSON + replaces specific sections/tables programmatically, while preserving the heavy contract logic in the templates’ inline JS.
 
 ---
 
@@ -162,20 +162,57 @@ No duplicate copies of templates were created. The generator injects JSON + repl
 
 ## 10) Current git state (important)
 
-These changes are **not committed yet**.
-
-Current working tree includes:
+As of the v3 upgrade work, the working tree includes:
 - Modified tracked files:
-  - `README.md`
-  - `visualizations.py`
-  - `run_analysis.py`
-  - `config_template.yaml`
-  - `examples/*` (01, 02, 04, 05, 06)
+  - `.gitignore`
+  - `examples/example_07_vm_smoke_generate_reports_from_artifacts.py`
+  - `reporting/business_report.py`
+  - `reporting/statistical_report.py`
+- Deleted tracked files (v2 mock templates removed as v3 becomes the default):
+  - `mock_references/business_report_v2.html`
+  - `mock_references/statistical_report_v2.html`
 - Untracked content:
-  - `reporting/`
-  - `mock_references/`
-  - `contracts/report_specification_contract.md`
-  - `.cursor/` (typically should not be committed)
+  - `contracts/report_specification_contract_v3.md`
+  - `mock_references/business_report_v3.html`
+  - `mock_references/statistical_report_v3.html`
+  - `mock_references/historical/` (template history snapshots)
 
-If you want a push, we should stage/commit `reporting/`, `mock_references/`, and the contract file, and exclude `.cursor/` (or add it to `.gitignore`).
+---
+
+## 11) v3 report spec upgrade (contract v3 amendment)
+
+### Why
+`contracts/report_specification_contract_v3.md` introduces v3 changes that are primarily **presentation + JS injection** updates:
+- Season-aware promo allocation (4 sliders)
+- Volume + revenue shown separately
+- Demand erosion projection (Year 1–3)
+- Statistical report dark theme
+- Business report Key Findings are **fully JS-generated** with expandable rationale
+- Cross-price constants must be promoted to the shared JS constants block (used by findings)
+
+### What changed in code
+- `reporting/business_report.py`
+  - Default template switched to `mock_references/business_report_v3.html`
+  - Replaced the simulator JS “constants prelude” as a block, injecting **R, SEASON, BETA_TIME, CROSS** from `REPORT`
+  - Cross-price locals (`crossMean/crossCILow/crossCIHigh`) removed and references redirected to `CROSS.*`
+  - Stopped Python-side Key Findings row injection to keep `<tbody id="findings-body">` empty (JS appends at runtime)
+  - Demand trend banner now shows annual mean + CI and **3-year cumulative range** derived from CI bounds
+  - Simulator season multiplier labels are updated dynamically (IDs injected + JS sets text from SEASON betas)
+
+- `reporting/statistical_report.py`
+  - Default template switched to `mock_references/statistical_report_v3.html`
+  - Injects required v3 constants from `REPORT`:
+    - `COEFFICIENTS`, `SEASON_BETA`, `BETA_TIME`, `ANNUAL_EROSION_PCT`, `CROSS_ELASTICITY`, `CROSS_HDI`
+  - Removes template hardcoded constants before injecting, so calculators always reflect the real model outputs
+
+- `examples/example_07_vm_smoke_generate_reports_from_artifacts.py`
+  - Added artifacts-only assertions to validate v3 requirements without running MCMC:
+    - embedded `report-data`
+    - empty `<tbody id="findings-body">` (no `<tr>` children)
+    - presence of erosion panel marker text
+    - CROSS promoted (no `const crossMean/crossCILow/crossCIHigh`)
+    - stat report contains injected `SEASON_BETA`, `BETA_TIME`, `CROSS_HDI`
+
+### Constraints honored
+- No MCMC/sampling was run as part of this upgrade; it relies on existing artifacts (`trace.nc`, `prepared_data.csv`).
 

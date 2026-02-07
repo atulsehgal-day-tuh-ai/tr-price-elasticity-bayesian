@@ -32,7 +32,7 @@ def generate_statistical_report(
     out.mkdir(parents=True, exist_ok=True)
 
     if template_path is None:
-        template_path = str(Path("mock_references") / "statistical_report_v2.html")
+        template_path = str(Path("mock_references") / "statistical_report_v3.html")
     template_file = Path(template_path)
 
     # Generate plots (PNG) in output_dir, then embed as base64
@@ -100,10 +100,23 @@ def generate_statistical_report(
         "    // Posterior means (will be injected by Python in production)",
         "    // Posterior means (injected by pipeline)",
     )
-    # A simple, robust hook: set COEFFICIENTS from REPORT if present.
-    hook = "\n    const REPORT = JSON.parse(document.getElementById('report-data').textContent);\n    const COEFFICIENTS = REPORT.coefficients;\n"
-    if "const REPORT =" not in tpl:
-        tpl = tpl.replace(marker, marker + hook, 1)
+    # v3 hook: set interactive constants from REPORT (contract §5).
+    hook = (
+        "\n    const REPORT = JSON.parse(document.getElementById('report-data').textContent);\n"
+        "    const COEFFICIENTS = REPORT.coefficients;\n"
+        "    const CROSS_ELASTICITY = (REPORT.summaries && REPORT.summaries.cross && REPORT.summaries.cross.Overall) ? Number(REPORT.summaries.cross.Overall.mean) : 0.0;\n"
+        "    const CROSS_HDI = (REPORT.summaries && REPORT.summaries.cross && REPORT.summaries.cross.Overall)\n"
+        "        ? [Number(REPORT.summaries.cross.Overall.ci_lower), Number(REPORT.summaries.cross.Overall.ci_upper)]\n"
+        "        : [0.0, 0.0];\n"
+        "    const SEASON_BETA = {\n"
+        "        winter: 0.0,\n"
+        "        spring: (REPORT.seasonal && REPORT.seasonal.Spring) ? Number(REPORT.seasonal.Spring.mean) : 0.0,\n"
+        "        summer: (REPORT.seasonal && REPORT.seasonal.Summer) ? Number(REPORT.seasonal.Summer.mean) : 0.0,\n"
+        "        fall:   (REPORT.seasonal && REPORT.seasonal.Fall)   ? Number(REPORT.seasonal.Fall.mean)   : 0.0\n"
+        "    };\n"
+        "    const BETA_TIME = (REPORT.beta_time && REPORT.beta_time.mean !== undefined) ? Number(REPORT.beta_time.mean) : 0.0;\n"
+        "    const ANNUAL_EROSION_PCT = (Math.exp(BETA_TIME * 52) - 1) * 100;\n"
+    )
 
     # Remove the original hardcoded COEFFICIENTS literal (best-effort, bounded).
     tpl = re.sub(
@@ -112,6 +125,42 @@ def generate_statistical_report(
         tpl,
         count=1,
     )
+
+    # Remove other hardcoded v3 constants that must be injected (best-effort, bounded).
+    tpl = re.sub(
+        r"const\s+CROSS_ELASTICITY\s*=\s*.*?;",
+        "/* CROSS_ELASTICITY injected by pipeline */",
+        tpl,
+        count=1,
+    )
+    tpl = re.sub(
+        r"const\s+CROSS_HDI\s*=\s*\[[\s\S]*?\];",
+        "/* CROSS_HDI injected by pipeline */",
+        tpl,
+        count=1,
+    )
+    tpl = re.sub(
+        r"const\s+SEASON_BETA\s*=\s*\{[\s\S]*?\};",
+        "/* SEASON_BETA injected by pipeline */",
+        tpl,
+        count=1,
+    )
+    tpl = re.sub(
+        r"const\s+BETA_TIME\s*=\s*.*?;",
+        "/* BETA_TIME injected by pipeline */",
+        tpl,
+        count=1,
+    )
+    tpl = re.sub(
+        r"const\s+ANNUAL_EROSION_PCT\s*=\s*.*?;",
+        "/* ANNUAL_EROSION_PCT injected by pipeline */",
+        tpl,
+        count=1,
+    )
+
+    # Inject REPORT-derived constants after removing template hardcodes.
+    if "const REPORT =" not in tpl:
+        tpl = tpl.replace(marker, marker + hook, 1)
 
     # Add a small DOM population script for key tables + plots.
     population_js = """
